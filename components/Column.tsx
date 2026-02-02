@@ -76,38 +76,38 @@ const Column: React.FC<ColumnProps> = ({
         className="flex items-center justify-between p-4 cursor-grab"
       >
         <div className="flex gap-2 items-center w-full">
-            <div className="bg-white p-2 rounded-lg shadow-sm font-bold text-sm text-indigo-600">
-                {tasks.length}
-            </div>
-            <div className="flex-grow">
-                {editMode ? (
-                    <input 
-                        className="bg-white focus:border-indigo-500 border border-indigo-300 rounded outline-none px-2 py-1 text-sm font-semibold w-full text-slate-800"
-                        value={column.title}
-                        onChange={(e) => updateColumnTitle(column.id, e.target.value)}
-                        autoFocus
-                        onBlur={() => setEditMode(false)}
-                        onKeyDown={(e) => {
-                            if(e.key !== "Enter") return;
-                            setEditMode(false);
-                        }}
-                    />
-                ) : (
-                    <h2 
-                        onClick={() => setEditMode(true)}
-                        className="text-base font-bold text-slate-700 truncate cursor-pointer hover:bg-slate-200 px-2 py-1 rounded transition-colors"
-                    >
-                        {column.title}
-                    </h2>
-                )}
-            </div>
+          <div className="bg-white p-2 rounded-lg shadow-sm font-bold text-sm text-indigo-600">
+            {tasks.length}
+          </div>
+          <div className="flex-grow">
+            {editMode ? (
+              <input
+                className="bg-white focus:border-indigo-500 border border-indigo-300 rounded outline-none px-2 py-1 text-sm font-semibold w-full text-slate-800"
+                value={column.title}
+                onChange={(e) => updateColumnTitle(column.id, e.target.value)}
+                autoFocus
+                onBlur={() => setEditMode(false)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  setEditMode(false);
+                }}
+              />
+            ) : (
+              <h2
+                onClick={() => setEditMode(true)}
+                className="text-base font-bold text-slate-700 truncate cursor-pointer hover:bg-slate-200 px-2 py-1 rounded transition-colors"
+              >
+                {column.title}
+              </h2>
+            )}
+          </div>
         </div>
-        
+
         <button
-            onClick={() => deleteColumn(column.id)}
-            className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
+          onClick={() => deleteColumn(column.id)}
+          className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
         >
-            <Trash2 size={18} />
+          <Trash2 size={18} />
         </button>
       </div>
 
@@ -129,13 +129,13 @@ const Column: React.FC<ColumnProps> = ({
       {/* Footer / Add Button */}
       <div className="p-3 pt-0">
         <button
-            onClick={() => createTask(column.id)}
-            className="flex gap-2 items-center justify-center w-full p-3 rounded-xl hover:bg-white hover:shadow-sm hover:text-indigo-600 text-slate-500 font-medium transition-all duration-200 border border-transparent hover:border-slate-200 group"
+          onClick={() => createTask(column.id)}
+          className="flex gap-2 items-center justify-center w-full p-3 rounded-xl hover:bg-white hover:shadow-sm hover:text-indigo-600 text-slate-500 font-medium transition-all duration-200 border border-transparent hover:border-slate-200 group"
         >
-            <div className="bg-slate-200 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 rounded-full p-1 transition-colors">
-                <Plus size={16} strokeWidth={3} />
-            </div>
-            Add Task
+          <div className="bg-slate-200 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 rounded-full p-1 transition-colors">
+            <Plus size={16} strokeWidth={3} />
+          </div>
+          添加任务
         </button>
       </div>
     </div>

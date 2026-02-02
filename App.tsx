@@ -45,26 +45,26 @@ function getGeminiClient(): GoogleGenAI | null {
 
 // --- Default Data Constants ---
 const defaultCols: ColumnType[] = [
-  { id: "todo", title: "To Do" },
-  { id: "doing", title: "In Progress" },
-  { id: "done", title: "Done" },
+  { id: "todo", title: "待办" },
+  { id: "doing", title: "进行中" },
+  { id: "done", title: "已完成" },
 ];
 
 const defaultIdeaCols: ColumnType[] = [
-  { id: "raw", title: "Raw Thoughts" },
-  { id: "refined", title: "Refined Concepts" },
+  { id: "raw", title: "初步想法" },
+  { id: "refined", title: "精炼概念" },
 ];
 
 const defaultTasks: Task[] = [
-  { id: "1", columnId: "todo", content: "Design new landing page", completed: false },
-  { id: "2", columnId: "todo", content: "Research competitor pricing", completed: false },
-  { id: "3", columnId: "doing", content: "Implement authentication flow", completed: false },
-  { id: "4", columnId: "done", content: "Set up project repository", completed: true },
+  { id: "1", columnId: "todo", content: "设计新的首页", completed: false },
+  { id: "2", columnId: "todo", content: "调研竞品定价", completed: false },
+  { id: "3", columnId: "doing", content: "实现登录流程", completed: false },
+  { id: "4", columnId: "done", content: "搭建项目仓库", completed: true },
 ];
 
 const defaultIdeas: Idea[] = [
-  { id: "i1", columnId: "raw", content: "Maybe we should add a dark mode?" },
-  { id: "i2", columnId: "raw", content: "Use AI to sort tasks automatically" },
+  { id: "i1", columnId: "raw", content: "要不要加个深色模式？" },
+  { id: "i2", columnId: "raw", content: "用 AI 自动整理任务" },
 ];
 
 type ViewMode = 'tasks' | 'ideas';
@@ -495,20 +495,20 @@ function App() {
               onClick={() => setView('tasks')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'tasks' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Tasks
+              任务
             </button>
             <button
               onClick={() => setView('ideas')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'ideas' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Ideas
+              想法
             </button>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="hidden md:flex flex-col items-end mr-2">
-            <span className="text-xs text-slate-400 font-medium">Workspace</span>
+            <span className="text-xs text-slate-400 font-medium">工作区</span>
             <span className="text-sm font-bold text-slate-700">{currentUser}</span>
           </div>
 
@@ -560,13 +560,13 @@ function App() {
             className={`flex items-center gap-2 px-4 py-2 text-white rounded-full transition-colors shadow-sm font-medium text-sm ${view === 'tasks' ? 'bg-slate-900 hover:bg-slate-700' : 'bg-purple-600 hover:bg-purple-700'}`}
           >
             <Plus size={16} />
-            <span className="hidden md:inline">{view === 'tasks' ? 'New Category' : 'New Topic'}</span>
+            <span className="hidden md:inline">{view === 'tasks' ? '新建分类' : '新建主题'}</span>
           </button>
 
           <button
             onClick={handleLogout}
             className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-            title="Log Out"
+            title="退出登录"
           >
             <LogOut size={20} />
           </button>

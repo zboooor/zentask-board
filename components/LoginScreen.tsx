@@ -87,7 +87,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         </div>
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">Welcome to ZenTask</h1>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">欢迎使用轻计划</h1>
           <p className="text-slate-500">
             {isNewUser === null
               ? '输入用户名开始'

@@ -57,61 +57,61 @@ const IdeaCard: React.FC<IdeaCardProps> = ({ idea, deleteIdea, updateIdea, optim
     >
       {idea.isAiGenerated && (
         <div className="absolute top-2 right-2 opacity-50">
-            <Bot size={14} className="text-purple-600" />
+          <Bot size={14} className="text-purple-600" />
         </div>
       )}
-      
+
       <div className="flex w-full items-start gap-3 h-full">
         {/* Drag Handle */}
         <div {...attributes} {...listeners} className="cursor-grab text-slate-400 hover:text-purple-500 -ml-1 mt-1">
-           <GripVertical size={18} />
+          <GripVertical size={18} />
         </div>
 
         {/* Content */}
         <div className="flex-grow min-w-0 flex flex-col h-full">
-            {isEditing ? (
+          {isEditing ? (
             <textarea
-                className="w-full bg-slate-50 border border-purple-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none min-h-[60px]"
-                value={idea.content}
-                autoFocus
-                onBlur={() => setIsEditing(false)}
-                onKeyDown={(e) => {
+              className="w-full bg-slate-50 border border-purple-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none min-h-[60px]"
+              value={idea.content}
+              autoFocus
+              onBlur={() => setIsEditing(false)}
+              onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
-                    setIsEditing(false);
+                  setIsEditing(false);
                 }
-                }}
-                onChange={(e) => updateIdea(idea.id, e.target.value)}
+              }}
+              onChange={(e) => updateIdea(idea.id, e.target.value)}
             />
-            ) : (
-            <p 
-                onClick={() => setIsEditing(true)}
-                className={`text-sm font-medium leading-relaxed cursor-text break-words whitespace-pre-wrap text-slate-700`}
+          ) : (
+            <p
+              onClick={() => setIsEditing(true)}
+              className={`text-sm font-medium leading-relaxed cursor-text break-words whitespace-pre-wrap text-slate-700`}
             >
-                {idea.content}
+              {idea.content}
             </p>
-            )}
+          )}
         </div>
       </div>
 
       {/* Footer Actions */}
       <div className="flex w-full justify-end items-center gap-2 mt-3 pt-2 border-t border-slate-100">
-          {!idea.isAiGenerated && (
-              <button
-                onClick={() => optimizeIdea(idea.id, idea.content)}
-                disabled={isOptimizing}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold transition-all ${isOptimizing ? 'text-purple-300' : 'text-purple-600 hover:bg-purple-50'}`}
-              >
-                <Sparkles size={14} className={isOptimizing ? "animate-spin" : ""} />
-                {isOptimizing ? "Optimizing..." : "AI Optimize"}
-              </button>
-          )}
-          
-          <button 
-             onClick={() => deleteIdea(idea.id)}
-             className="text-slate-300 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors"
-           >
-             <Trash2 size={14} />
-           </button>
+        {!idea.isAiGenerated && (
+          <button
+            onClick={() => optimizeIdea(idea.id, idea.content)}
+            disabled={isOptimizing}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold transition-all ${isOptimizing ? 'text-purple-300' : 'text-purple-600 hover:bg-purple-50'}`}
+          >
+            <Sparkles size={14} className={isOptimizing ? "animate-spin" : ""} />
+            {isOptimizing ? "优化中..." : "AI 优化"}
+          </button>
+        )}
+
+        <button
+          onClick={() => deleteIdea(idea.id)}
+          className="text-slate-300 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
     </div>
   );
