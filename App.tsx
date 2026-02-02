@@ -29,8 +29,9 @@ import {
   UserData
 } from './services/feishuService';
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize Gemini Client (optional - only if API key is configured)
+const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 // --- Default Data Constants ---
 const defaultCols: ColumnType[] = [
@@ -294,6 +295,10 @@ function App() {
   };
 
   const optimizeIdea = async (ideaId: Id, content: string, columnId: Id) => {
+    if (!ai) {
+      alert("AI feature is not available. Please configure GEMINI_API_KEY to use this feature.");
+      return;
+    }
     setOptimizingIds(prev => new Set(prev).add(ideaId));
     try {
       const response = await ai.models.generateContent({
@@ -329,6 +334,7 @@ function App() {
       });
     }
   };
+
 
   // --- DnD Handlers ---
 
@@ -474,12 +480,12 @@ function App() {
               onClick={handleRefresh}
               disabled={syncStatus === 'syncing'}
               className={`p-2 rounded-lg transition-colors ${syncStatus === 'syncing'
-                  ? 'text-blue-500 bg-blue-50 cursor-wait'
-                  : syncStatus === 'synced'
-                    ? 'text-green-500 hover:bg-green-50'
-                    : syncStatus === 'offline' || syncStatus === 'error'
-                      ? 'text-orange-500 hover:bg-orange-50'
-                      : 'text-slate-400 hover:bg-slate-100'
+                ? 'text-blue-500 bg-blue-50 cursor-wait'
+                : syncStatus === 'synced'
+                  ? 'text-green-500 hover:bg-green-50'
+                  : syncStatus === 'offline' || syncStatus === 'error'
+                    ? 'text-orange-500 hover:bg-orange-50'
+                    : 'text-slate-400 hover:bg-slate-100'
                 }`}
               title={
                 syncStatus === 'syncing'
