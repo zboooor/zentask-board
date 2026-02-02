@@ -1,0 +1,5 @@
+{
+  "name": "ZenTask Board",
+  "description": "A clean, minimalist Kanban-style task management system with drag-and-drop capabilities.",
+  "requestFramePermissions": []
+}
