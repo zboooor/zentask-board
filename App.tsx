@@ -328,10 +328,10 @@ function App() {
   const updateColumnTitle = (id: Id, title: string) => {
     setColumns(columns.map((col) => (col.id === id ? { ...col, title } : col)));
 
-    // Sync to Feishu with debounce
+    // Sync to Feishu with debounce - explicitly pass type: 'task'
     const column = columns.find(col => col.id === id);
     if (currentUser && column?.recordId) {
-      debouncedSync(() => updateRecord('columns', column.recordId!, { title }));
+      debouncedSync(() => updateRecord('columns', column.recordId!, { title, type: 'task' }));
     }
   };
 
@@ -459,10 +459,10 @@ function App() {
   const updateIdeaColumnTitle = (id: Id, title: string) => {
     setIdeaColumns(ideaColumns.map((col) => (col.id === id ? { ...col, title } : col)));
 
-    // Sync to Feishu with debounce
+    // Sync to Feishu with debounce - explicitly pass type: 'idea'
     const column = ideaColumns.find(col => col.id === id);
     if (currentUser && column?.recordId) {
-      debouncedSync(() => updateRecord('columns', column.recordId!, { title }));
+      debouncedSync(() => updateRecord('columns', column.recordId!, { title, type: 'idea' }));
     }
   };
 
