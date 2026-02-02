@@ -85,6 +85,8 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const dataLoadedRef = useRef(false);
+  const isSavingRef = useRef(false);  // Prevent concurrent saves
+  const isRefreshingRef = useRef(false);  // Prevent save during refresh
 
   // --- Persistence Logic ---
 
@@ -164,7 +166,8 @@ function App() {
 
   // 2. Save data whenever it changes - to both localStorage (cache) and cloud
   useEffect(() => {
-    if (currentUser && !isInitialLoad) {
+    // Don't save during initial load, refresh, or if already saving
+    if (currentUser && !isInitialLoad && !isRefreshingRef.current) {
       const dataToSave: UserData = {
         columns,
         tasks,
@@ -182,9 +185,11 @@ function App() {
 
   // Manual refresh handler
   const handleRefresh = useCallback(async () => {
-    if (!currentUser) return;
+    if (!currentUser || isRefreshingRef.current) return;
 
+    isRefreshingRef.current = true;
     setSyncStatus('syncing');
+
     try {
       const data = await fetchUserData(currentUser);
       if (data) {
@@ -193,25 +198,28 @@ function App() {
           data.ideaColumns.length > 0 || data.ideas.length > 0;
 
         if (hasCloudData) {
-          // Cloud has data, use it
-          setColumns(data.columns.length > 0 ? data.columns : columns);
-          setTasks(data.tasks.length > 0 ? data.tasks : tasks);
-          setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : ideaColumns);
-          setIdeas(data.ideas.length > 0 ? data.ideas : ideas);
+          // Cloud has data, use it (don't trigger re-save)
+          setColumns(data.columns.length > 0 ? data.columns : defaultCols);
+          setTasks(data.tasks);
+          setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : defaultIdeaCols);
+          setIdeas(data.ideas);
           localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(data));
+          setSyncStatus('synced');
         } else {
-          // Cloud is empty, push local data to cloud instead
-          console.log('Cloud is empty, pushing local data to cloud');
-          const localData = { columns, tasks, ideaColumns, ideas };
-          saveUserDataDebounced(currentUser, localData, setSyncStatus);
+          // Cloud is empty - just mark as synced, don't push anything
+          // User's local data stays as is
+          setSyncStatus('synced');
         }
+      } else {
+        setSyncStatus('synced');
       }
-      setSyncStatus('synced');
     } catch (err) {
       console.error('Manual refresh failed:', err);
       setSyncStatus('error');
+    } finally {
+      isRefreshingRef.current = false;
     }
-  }, [currentUser, columns, tasks, ideaColumns, ideas]);
+  }, [currentUser]);
 
   const handleLogout = () => {
     setCurrentUser(null);
