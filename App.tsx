@@ -486,7 +486,7 @@ function App() {
             <div className={`p-2 rounded-lg text-white transition-colors ${view === 'tasks' ? 'bg-indigo-600' : 'bg-purple-600'}`}>
               {view === 'tasks' ? <Layout size={24} /> : <BrainCircuit size={24} />}
             </div>
-            <h1 className="text-xl font-bold text-slate-800 tracking-tight hidden sm:block">ZenTask Board</h1>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight hidden sm:block">轻计划</h1>
           </div>
 
           {/* View Switcher */}
@@ -602,7 +602,7 @@ function App() {
               </SortableContext>
               {columns.length === 0 && (
                 <div className="flex flex-col items-center justify-center w-full h-[60vh] text-slate-400">
-                  <p>No task categories.</p>
+                  <p>还没有任务分类</p>
                 </div>
               )}
             </div>
@@ -615,8 +615,8 @@ function App() {
                     key={col.id}
                     column={col}
                     ideas={ideas.filter((idea) => idea.columnId === col.id)}
-                    deleteIdeaColumn={deleteIdeaColumn}
-                    updateIdeaColumnTitle={updateIdeaColumnTitle}
+                    deleteColumn={deleteIdeaColumn}
+                    updateColumnTitle={updateIdeaColumnTitle}
                     createIdea={createIdea}
                     deleteIdea={deleteIdea}
                     updateIdea={updateIdea}
@@ -627,7 +627,7 @@ function App() {
               </SortableContext>
               {ideaColumns.length === 0 && (
                 <div className="flex flex-col items-center justify-center w-full h-[60vh] text-slate-400">
-                  <p>No idea topics.</p>
+                  <p>还没有想法主题</p>
                 </div>
               )}
             </div>
