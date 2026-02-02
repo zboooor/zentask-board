@@ -220,6 +220,29 @@ function App() {
     localStorage.removeItem(`${STORAGE_PREFIX}current_user`);
   };
 
+  const handleClearCache = () => {
+    if (confirm('确定清除所有本地缓存？这将重置当前工作区的本地数据。')) {
+      // Clear all zentask data from localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(STORAGE_PREFIX)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+
+      // Reset state to empty
+      setColumns([]);
+      setTasks([]);
+      setIdeaColumns([]);
+      setIdeas([]);
+      setSyncStatus('idle');
+
+      alert('缓存已清除！');
+    }
+  };
+
   // --- DnD Sensors ---
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -758,6 +781,18 @@ function App() {
           >
             <Plus size={16} />
             <span className="hidden md:inline">{view === 'tasks' ? '新建分类' : '新建主题'}</span>
+          </button>
+
+          <button
+            onClick={handleClearCache}
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="清除本地缓存"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+            </svg>
           </button>
 
           <button
