@@ -29,9 +29,19 @@ import {
   UserData
 } from './services/feishuService';
 
-// Initialize Gemini Client (optional - only if API key is configured)
-const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+// Gemini API Key storage key
+const GEMINI_API_KEY_STORAGE = 'zentask_gemini_api_key';
+
+// Helper function to get or create Gemini AI client
+function getGeminiClient(): GoogleGenAI | null {
+  const storedKey = localStorage.getItem(GEMINI_API_KEY_STORAGE);
+  const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = storedKey || envKey;
+
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+}
+
 
 // --- Default Data Constants ---
 const defaultCols: ColumnType[] = [
@@ -295,14 +305,35 @@ function App() {
   };
 
   const optimizeIdea = async (ideaId: Id, content: string, columnId: Id) => {
+    // Try to get existing client
+    let ai = getGeminiClient();
+
+    // If no API key configured, prompt user to enter one
     if (!ai) {
-      alert("AI feature is not available. Please configure GEMINI_API_KEY to use this feature.");
-      return;
+      const userKey = prompt(
+        "请输入您的 Gemini API Key 来使用 AI 优化功能：\n\n" +
+        "（可以在 https://makersuite.google.com/app/apikey 获取）\n\n" +
+        "API Key 将保存在浏览器本地，下次无需重新输入。"
+      );
+
+      if (!userKey || userKey.trim() === "") {
+        return; // User cancelled
+      }
+
+      // Save to localStorage
+      localStorage.setItem(GEMINI_API_KEY_STORAGE, userKey.trim());
+      ai = getGeminiClient();
+
+      if (!ai) {
+        alert("API Key 设置失败，请重试。");
+        return;
+      }
     }
+
     setOptimizingIds(prev => new Set(prev).add(ideaId));
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.0-flash',
         contents: `You are a helpful product manager assistant. Optimize and organize the following raw idea into a clear, concise, and actionable note. Keep it short. \n\nIdea: ${content}`,
       });
 
@@ -323,9 +354,15 @@ function App() {
           return newArr;
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("AI Optimization failed", e);
-      alert("Failed to optimize idea. Check API configuration.");
+      // If API key is invalid, clear it and let user re-enter
+      if (e?.message?.includes("API key") || e?.status === 401 || e?.status === 403) {
+        localStorage.removeItem(GEMINI_API_KEY_STORAGE);
+        alert("API Key 无效或已过期，请重新输入。");
+      } else {
+        alert("AI 优化失败：" + (e?.message || "未知错误"));
+      }
     } finally {
       setOptimizingIds(prev => {
         const next = new Set(prev);
@@ -334,6 +371,7 @@ function App() {
       });
     }
   };
+
 
 
   // --- DnD Handlers ---
