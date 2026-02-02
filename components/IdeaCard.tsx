@@ -95,16 +95,7 @@ const IdeaCard: React.FC<IdeaCardProps> = ({ idea, deleteIdea, updateIdea, optim
 
       {/* Footer Actions */}
       <div className="flex w-full justify-end items-center gap-2 mt-3 pt-2 border-t border-slate-100">
-        {!idea.isAiGenerated && (
-          <button
-            onClick={() => optimizeIdea(idea.id, idea.content)}
-            disabled={isOptimizing}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold transition-all ${isOptimizing ? 'text-purple-300' : 'text-purple-600 hover:bg-purple-50'}`}
-          >
-            <Sparkles size={14} className={isOptimizing ? "animate-spin" : ""} />
-            {isOptimizing ? "优化中..." : "AI 优化"}
-          </button>
-        )}
+        {/* AI optimize button hidden for now */}
 
         <button
           onClick={() => deleteIdea(idea.id)}

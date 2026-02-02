@@ -174,13 +174,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             )}
           </button>
         </form>
-
-        <div className="mt-8 pt-6 border-t border-slate-100">
-          <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
-            <Sparkles size={14} />
-            <span>Powered by Gemini AI</span>
-          </div>
-        </div>
       </div>
     </div>
   );
