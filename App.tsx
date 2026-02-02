@@ -86,6 +86,11 @@ function App() {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);  // Debounce timer for sync
   const SYNC_DEBOUNCE_MS = 1500;  // Wait 1.5s after last change before syncing
 
+  // Cross-tab synchronization
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const POLL_INTERVAL_MS = 30000;  // Poll cloud every 30 seconds
+
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
     if (syncTimerRef.current) {
@@ -96,12 +101,19 @@ function App() {
       try {
         await syncFn();
         setSyncStatus('synced');
+        // Broadcast to other tabs that data changed
+        broadcastChannelRef.current?.postMessage({ type: 'DATA_CHANGED', userId: currentUser });
       } catch (err) {
         console.error('Sync failed:', err);
         setSyncStatus('error');
       }
     }, SYNC_DEBOUNCE_MS);
-  }, []);
+  }, [currentUser]);
+
+  // Helper: Broadcast data change to other tabs
+  const broadcastDataChange = useCallback(() => {
+    broadcastChannelRef.current?.postMessage({ type: 'DATA_CHANGED', userId: currentUser });
+  }, [currentUser]);
 
   // --- Persistence Logic ---
 
@@ -233,6 +245,41 @@ function App() {
       isRefreshingRef.current = false;
     }
   }, [currentUser]);
+
+  // Cross-tab synchronization: BroadcastChannel + Polling
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Setup BroadcastChannel for cross-tab communication
+    const channel = new BroadcastChannel('zentask_sync');
+    broadcastChannelRef.current = channel;
+
+    // Listen for data changes from other tabs
+    channel.onmessage = (event) => {
+      if (event.data.type === 'DATA_CHANGED' && event.data.userId === currentUser) {
+        console.log('Data changed in another tab, refreshing...');
+        // Refresh from cloud
+        handleRefresh();
+      }
+    };
+
+    // Setup periodic polling for cloud sync
+    pollIntervalRef.current = setInterval(() => {
+      if (!isRefreshingRef.current && !syncTimerRef.current) {
+        console.log('Periodic sync: checking for updates...');
+        handleRefresh();
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      channel.close();
+      broadcastChannelRef.current = null;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [currentUser, handleRefresh]);
 
   const handleLogout = () => {
     setCurrentUser(null);
