@@ -83,6 +83,25 @@ function App() {
   const dataLoadedRef = useRef(false);
   const isSavingRef = useRef(false);  // Prevent concurrent saves
   const isRefreshingRef = useRef(false);  // Prevent save during refresh
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);  // Debounce timer for sync
+  const SYNC_DEBOUNCE_MS = 1500;  // Wait 1.5s after last change before syncing
+
+  // Helper: Debounced sync for updates
+  const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+    }
+    setSyncStatus('syncing');
+    syncTimerRef.current = setTimeout(async () => {
+      try {
+        await syncFn();
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Sync failed:', err);
+        setSyncStatus('error');
+      }
+    }, SYNC_DEBOUNCE_MS);
+  }, []);
 
   // --- Persistence Logic ---
 
@@ -306,20 +325,13 @@ function App() {
     }
   };
 
-  const updateColumnTitle = async (id: Id, title: string) => {
+  const updateColumnTitle = (id: Id, title: string) => {
     setColumns(columns.map((col) => (col.id === id ? { ...col, title } : col)));
 
-    // Sync to Feishu
+    // Sync to Feishu with debounce
     const column = columns.find(col => col.id === id);
     if (currentUser && column?.recordId) {
-      try {
-        setSyncStatus('syncing');
-        await updateRecord('columns', column.recordId, { title });
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error('Failed to sync column update:', err);
-        setSyncStatus('error');
-      }
+      debouncedSync(() => updateRecord('columns', column.recordId!, { title }));
     }
   };
 
@@ -363,20 +375,13 @@ function App() {
     }
   };
 
-  const updateTask = async (id: Id, content: string) => {
+  const updateTask = (id: Id, content: string) => {
     setTasks(tasks.map((task) => (task.id === id ? { ...task, content } : task)));
 
-    // Sync to Feishu
+    // Sync to Feishu with debounce (wait for user to finish typing)
     const task = tasks.find(t => t.id === id);
     if (currentUser && task?.recordId) {
-      try {
-        setSyncStatus('syncing');
-        await updateRecord('tasks', task.recordId, { ...task, content });
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error('Failed to sync task update:', err);
-        setSyncStatus('error');
-      }
+      debouncedSync(() => updateRecord('tasks', task.recordId!, { ...task, content }));
     }
   };
 
@@ -451,20 +456,13 @@ function App() {
     }
   };
 
-  const updateIdeaColumnTitle = async (id: Id, title: string) => {
+  const updateIdeaColumnTitle = (id: Id, title: string) => {
     setIdeaColumns(ideaColumns.map((col) => (col.id === id ? { ...col, title } : col)));
 
-    // Sync to Feishu
+    // Sync to Feishu with debounce
     const column = ideaColumns.find(col => col.id === id);
     if (currentUser && column?.recordId) {
-      try {
-        setSyncStatus('syncing');
-        await updateRecord('columns', column.recordId, { title });
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error('Failed to sync idea column update:', err);
-        setSyncStatus('error');
-      }
+      debouncedSync(() => updateRecord('columns', column.recordId!, { title }));
     }
   };
 
@@ -507,20 +505,13 @@ function App() {
     }
   };
 
-  const updateIdea = async (id: Id, content: string) => {
+  const updateIdea = (id: Id, content: string) => {
     setIdeas(ideas.map((idea) => (idea.id === id ? { ...idea, content } : idea)));
 
-    // Sync to Feishu
+    // Sync to Feishu with debounce
     const idea = ideas.find(i => i.id === id);
     if (currentUser && idea?.recordId) {
-      try {
-        setSyncStatus('syncing');
-        await updateRecord('ideas', idea.recordId, { ...idea, content });
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error('Failed to sync idea update:', err);
-        setSyncStatus('error');
-      }
+      debouncedSync(() => updateRecord('ideas', idea.recordId!, { ...idea, content }));
     }
   };
 
