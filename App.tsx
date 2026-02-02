@@ -46,17 +46,10 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 
-// --- Default Data Constants ---
-const defaultCols: ColumnType[] = [
-  { id: "todo", title: "待办" },
-  { id: "doing", title: "进行中" },
-  { id: "done", title: "已完成" },
-];
+// --- Default Data Constants (all empty for fresh start) ---
+const defaultCols: ColumnType[] = [];
 
-const defaultIdeaCols: ColumnType[] = [
-  { id: "raw", title: "初步想法" },
-  { id: "refined", title: "精炼概念" },
-];
+const defaultIdeaCols: ColumnType[] = [];
 
 const defaultTasks: Task[] = [];
 
