@@ -55,17 +55,9 @@ const defaultIdeaCols: ColumnType[] = [
   { id: "refined", title: "精炼概念" },
 ];
 
-const defaultTasks: Task[] = [
-  { id: "1", columnId: "todo", content: "设计新的首页", completed: false },
-  { id: "2", columnId: "todo", content: "调研竞品定价", completed: false },
-  { id: "3", columnId: "doing", content: "实现登录流程", completed: false },
-  { id: "4", columnId: "done", content: "搭建项目仓库", completed: true },
-];
+const defaultTasks: Task[] = [];
 
-const defaultIdeas: Idea[] = [
-  { id: "i1", columnId: "raw", content: "要不要加个深色模式？" },
-  { id: "i2", columnId: "raw", content: "用 AI 自动整理任务" },
-];
+const defaultIdeas: Idea[] = [];
 
 type ViewMode = 'tasks' | 'ideas';
 const STORAGE_PREFIX = 'zentask_v1_';
@@ -196,18 +188,30 @@ function App() {
     try {
       const data = await fetchUserData(currentUser);
       if (data) {
-        setColumns(data.columns.length > 0 ? data.columns : defaultCols);
-        setTasks(data.tasks);
-        setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : defaultIdeaCols);
-        setIdeas(data.ideas);
-        localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(data));
+        // Only overwrite if cloud has actual data (at least one column or task)
+        const hasCloudData = data.columns.length > 0 || data.tasks.length > 0 ||
+          data.ideaColumns.length > 0 || data.ideas.length > 0;
+
+        if (hasCloudData) {
+          // Cloud has data, use it
+          setColumns(data.columns.length > 0 ? data.columns : columns);
+          setTasks(data.tasks.length > 0 ? data.tasks : tasks);
+          setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : ideaColumns);
+          setIdeas(data.ideas.length > 0 ? data.ideas : ideas);
+          localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(data));
+        } else {
+          // Cloud is empty, push local data to cloud instead
+          console.log('Cloud is empty, pushing local data to cloud');
+          const localData = { columns, tasks, ideaColumns, ideas };
+          saveUserDataDebounced(currentUser, localData, setSyncStatus);
+        }
       }
       setSyncStatus('synced');
     } catch (err) {
       console.error('Manual refresh failed:', err);
       setSyncStatus('error');
     }
-  }, [currentUser]);
+  }, [currentUser, columns, tasks, ideaColumns, ideas]);
 
   const handleLogout = () => {
     setCurrentUser(null);
