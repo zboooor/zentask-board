@@ -90,6 +90,82 @@ export async function saveUserDataImmediate(userId: string, data: UserData): Pro
     }
 }
 
+// ============= Single Record CRUD Operations =============
+
+export type TableType = 'tasks' | 'ideas' | 'columns';
+
+// Record data types for API calls
+export interface RecordData {
+    id?: string | number;
+    columnId?: string | number;
+    content?: string;
+    title?: string;
+    completed?: boolean;
+    isAiGenerated?: boolean;
+    type?: 'task' | 'idea';
+    sortOrder?: number;
+}
+
+/**
+ * Create a single record in Feishu
+ * Returns the new recordId
+ */
+export async function createRecord(
+    userId: string,
+    table: TableType,
+    data: RecordData
+): Promise<string> {
+    const response = await fetch(`${API_BASE}/record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, userId, data }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Failed to create record`);
+    }
+
+    const result = await response.json();
+    return result.recordId;
+}
+
+/**
+ * Update a single record in Feishu
+ */
+export async function updateRecord(
+    table: TableType,
+    recordId: string,
+    data: RecordData
+): Promise<void> {
+    const response = await fetch(`${API_BASE}/record`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, recordId, data }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Failed to update record`);
+    }
+}
+
+/**
+ * Delete a single record in Feishu
+ */
+export async function deleteRecord(
+    table: TableType,
+    recordId: string
+): Promise<void> {
+    const response = await fetch(`${API_BASE}/record`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, recordId }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Failed to delete record`);
+    }
+}
+
 /**
  * Queue data for offline sync
  */

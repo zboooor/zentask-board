@@ -25,6 +25,9 @@ import {
   fetchUserData,
   saveUserDataDebounced,
   processOfflineQueue,
+  createRecord,
+  updateRecord,
+  deleteRecord,
   SyncStatus,
   UserData
 } from './services/feishuService';
@@ -164,9 +167,9 @@ function App() {
     }
   }, [currentUser]);
 
-  // 2. Save data whenever it changes - to both localStorage (cache) and cloud
+  // 2. Save data to localStorage as cache (cloud sync is now handled by individual CRUD operations)
   useEffect(() => {
-    // Don't save during initial load, refresh, or if already saving
+    // Don't save during initial load or refresh
     if (currentUser && !isInitialLoad && !isRefreshingRef.current) {
       const dataToSave: UserData = {
         columns,
@@ -175,11 +178,9 @@ function App() {
         ideas
       };
 
-      // Always save to localStorage as cache
+      // Save to localStorage as cache only
+      // Cloud sync is now handled incrementally by each CRUD operation
       localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(dataToSave));
-
-      // Save to cloud with debounce
-      saveUserDataDebounced(currentUser, dataToSave, setSyncStatus);
     }
   }, [currentUser, columns, tasks, ideaColumns, ideas, isInitialLoad]);
 
@@ -237,83 +238,274 @@ function App() {
   const columnsId = useMemo(() => columns.map((col) => col.id), [columns]);
   const ideaColumnsId = useMemo(() => ideaColumns.map((col) => col.id), [ideaColumns]);
 
-  // --- Task Actions ---
+  // --- Task Actions (with incremental sync) ---
 
-  const createColumn = () => {
+  const createColumn = async () => {
     const columnToAdd: ColumnType = {
       id: generateId(),
-      title: `New Group ${columns.length + 1}`,
+      title: `新分类 ${columns.length + 1}`,
     };
     setColumns([...columns, columnToAdd]);
+
+    // Sync to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        const recordId = await createRecord(currentUser, 'columns', { ...columnToAdd, type: 'task', sortOrder: columns.length });
+        setColumns(prev => prev.map(col => col.id === columnToAdd.id ? { ...col, recordId } : col));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync column creation:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const deleteColumn = (id: Id) => {
+  const deleteColumn = async (id: Id) => {
+    const column = columns.find(col => col.id === id);
+    const tasksToDelete = tasks.filter(t => t.columnId === id);
+
     setColumns(columns.filter((col) => col.id !== id));
     setTasks(tasks.filter((t) => t.columnId !== id));
+
+    // Sync deletions to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        // Delete column
+        if (column?.recordId) {
+          await deleteRecord('columns', column.recordId);
+        }
+        // Delete associated tasks
+        for (const task of tasksToDelete) {
+          if (task.recordId) {
+            await deleteRecord('tasks', task.recordId);
+          }
+        }
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync column deletion:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const updateColumnTitle = (id: Id, title: string) => {
+  const updateColumnTitle = async (id: Id, title: string) => {
     setColumns(columns.map((col) => (col.id === id ? { ...col, title } : col)));
+
+    // Sync to Feishu
+    const column = columns.find(col => col.id === id);
+    if (currentUser && column?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await updateRecord('columns', column.recordId, { title });
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync column update:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const createTask = (columnId: Id) => {
+  const createTask = async (columnId: Id) => {
     const newTask: Task = {
       id: generateId(),
       columnId,
-      content: `New Task ${tasks.length + 1}`,
+      content: `新任务 ${tasks.length + 1}`,
       completed: false,
     };
     setTasks([...tasks, newTask]);
+
+    // Sync to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        const recordId = await createRecord(currentUser, 'tasks', { ...newTask, sortOrder: tasks.length });
+        setTasks(prev => prev.map(t => t.id === newTask.id ? { ...t, recordId } : t));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync task creation:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const deleteTask = (id: Id) => {
-    setTasks(tasks.filter((task) => task.id !== id));
+  const deleteTask = async (id: Id) => {
+    const task = tasks.find(t => t.id === id);
+    setTasks(tasks.filter((t) => t.id !== id));
+
+    // Sync to Feishu
+    if (currentUser && task?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await deleteRecord('tasks', task.recordId);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync task deletion:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const updateTask = (id: Id, content: string) => {
+  const updateTask = async (id: Id, content: string) => {
     setTasks(tasks.map((task) => (task.id === id ? { ...task, content } : task)));
+
+    // Sync to Feishu
+    const task = tasks.find(t => t.id === id);
+    if (currentUser && task?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await updateRecord('tasks', task.recordId, { ...task, content });
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync task update:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const toggleComplete = (id: Id) => {
-    setTasks(prev => prev.map(task =>
-      task.id === id ? { ...task, completed: !task.completed } : task
+  const toggleComplete = async (id: Id) => {
+    const task = tasks.find(t => t.id === id);
+    const newCompleted = !task?.completed;
+
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, completed: newCompleted } : t
     ));
+
+    // Sync to Feishu
+    if (currentUser && task?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await updateRecord('tasks', task.recordId, { ...task, completed: newCompleted });
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync task toggle:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  // --- Idea Actions ---
+  // --- Idea Actions (with incremental sync) ---
 
-  const createIdeaColumn = () => {
+  const createIdeaColumn = async () => {
     const columnToAdd: ColumnType = {
       id: generateId(),
-      title: `New Topic ${ideaColumns.length + 1}`,
+      title: `新主题 ${ideaColumns.length + 1}`,
     };
     setIdeaColumns([...ideaColumns, columnToAdd]);
+
+    // Sync to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        const recordId = await createRecord(currentUser, 'columns', { ...columnToAdd, type: 'idea', sortOrder: ideaColumns.length });
+        setIdeaColumns(prev => prev.map(col => col.id === columnToAdd.id ? { ...col, recordId } : col));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync idea column creation:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const deleteIdeaColumn = (id: Id) => {
+  const deleteIdeaColumn = async (id: Id) => {
+    const column = ideaColumns.find(col => col.id === id);
+    const ideasToDelete = ideas.filter(t => t.columnId === id);
+
     setIdeaColumns(ideaColumns.filter((col) => col.id !== id));
     setIdeas(ideas.filter((t) => t.columnId !== id));
+
+    // Sync deletions to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        if (column?.recordId) {
+          await deleteRecord('columns', column.recordId);
+        }
+        for (const idea of ideasToDelete) {
+          if (idea.recordId) {
+            await deleteRecord('ideas', idea.recordId);
+          }
+        }
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync idea column deletion:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const updateIdeaColumnTitle = (id: Id, title: string) => {
+  const updateIdeaColumnTitle = async (id: Id, title: string) => {
     setIdeaColumns(ideaColumns.map((col) => (col.id === id ? { ...col, title } : col)));
+
+    // Sync to Feishu
+    const column = ideaColumns.find(col => col.id === id);
+    if (currentUser && column?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await updateRecord('columns', column.recordId, { title });
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync idea column update:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const createIdea = (columnId: Id) => {
+  const createIdea = async (columnId: Id) => {
     const newIdea: Idea = {
       id: generateId(),
       columnId,
-      content: `New Idea ${ideas.length + 1}`,
+      content: `新想法 ${ideas.length + 1}`,
     };
     setIdeas([...ideas, newIdea]);
+
+    // Sync to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        const recordId = await createRecord(currentUser, 'ideas', { ...newIdea, sortOrder: ideas.length });
+        setIdeas(prev => prev.map(i => i.id === newIdea.id ? { ...i, recordId } : i));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync idea creation:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const deleteIdea = (id: Id) => {
-    setIdeas(ideas.filter((idea) => idea.id !== id));
+  const deleteIdea = async (id: Id) => {
+    const idea = ideas.find(i => i.id === id);
+    setIdeas(ideas.filter((i) => i.id !== id));
+
+    // Sync to Feishu
+    if (currentUser && idea?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await deleteRecord('ideas', idea.recordId);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync idea deletion:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
-  const updateIdea = (id: Id, content: string) => {
+  const updateIdea = async (id: Id, content: string) => {
     setIdeas(ideas.map((idea) => (idea.id === id ? { ...idea, content } : idea)));
+
+    // Sync to Feishu
+    const idea = ideas.find(i => i.id === id);
+    if (currentUser && idea?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await updateRecord('ideas', idea.recordId, { ...idea, content });
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync idea update:', err);
+        setSyncStatus('error');
+      }
+    }
   };
 
   const optimizeIdea = async (ideaId: Id, content: string, columnId: Id) => {

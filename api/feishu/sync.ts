@@ -89,11 +89,13 @@ const COLUMNS_TABLE_ID = process.env.FEISHU_COLUMNS_TABLE_ID!;
 
 interface Column {
     id: string;
+    recordId?: string;
     title: string;
 }
 
 interface Task {
     id: string;
+    recordId?: string;
     columnId: string;
     content: string;
     completed: boolean;
@@ -101,6 +103,7 @@ interface Task {
 
 interface Idea {
     id: string;
+    recordId?: string;
     columnId: string;
     content: string;
     isAiGenerated?: boolean;
@@ -201,6 +204,7 @@ async function handleGet(userId: string): Promise<UserData> {
         .forEach((record) => {
             const col: Column = {
                 id: record.fields.column_id,
+                recordId: record.record_id,  // Add Feishu record ID
                 title: record.fields.title,
             };
             if (record.fields.type === 'idea') {
@@ -215,6 +219,7 @@ async function handleGet(userId: string): Promise<UserData> {
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .map((record) => ({
             id: record.fields.task_id,
+            recordId: record.record_id,  // Add Feishu record ID
             columnId: record.fields.column_id,
             content: record.fields.content,
             completed: record.fields.completed || false,
@@ -225,6 +230,7 @@ async function handleGet(userId: string): Promise<UserData> {
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .map((record) => ({
             id: record.fields.idea_id,
+            recordId: record.record_id,  // Add Feishu record ID
             columnId: record.fields.column_id,
             content: record.fields.content,
             isAiGenerated: record.fields.is_ai_generated || false,

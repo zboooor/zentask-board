@@ -2,6 +2,7 @@ export type Id = string | number;
 
 export interface Task {
   id: Id;
+  recordId?: string;  // Feishu record ID for incremental sync
   columnId: Id;
   content: string;
   completed: boolean;
@@ -9,6 +10,7 @@ export interface Task {
 
 export interface Idea {
   id: Id;
+  recordId?: string;  // Feishu record ID for incremental sync
   columnId: Id;
   content: string;
   isAiGenerated?: boolean;
@@ -16,5 +18,6 @@ export interface Idea {
 
 export interface Column {
   id: Id;
+  recordId?: string;  // Feishu record ID for incremental sync
   title: string;
 }
