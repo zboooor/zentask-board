@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, ArrowRight, Sparkles, Lock, UserPlus, LogIn } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Layout, ArrowRight, Sparkles, Lock, UserPlus, LogIn, RefreshCw } from 'lucide-react';
 
 interface LoginScreenProps {
   onLogin: (username: string) => void;
 }
 
-// Simple hash function for password storage (not cryptographically secure, but sufficient for local storage)
+// Simple hash function for password storage
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -14,7 +14,8 @@ async function hashPassword(password: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const PASSWORD_STORAGE_PREFIX = 'zentask_pwd_';
+// API base URL - use relative path (works for both dev and production)
+const API_BASE = '';
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
@@ -23,17 +24,52 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [isNewUser, setIsNewUser] = useState<boolean | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
 
-  // Check if user exists when username changes
-  useEffect(() => {
-    if (username.trim()) {
-      const storedHash = localStorage.getItem(`${PASSWORD_STORAGE_PREFIX}${username.trim().toLowerCase()}`);
-      setIsNewUser(!storedHash);
-      setError('');
-    } else {
+  // Check if user exists in cloud when username changes (debounced)
+  const checkUserExists = useCallback(async (userId: string) => {
+    if (!userId.trim()) {
       setIsNewUser(null);
+      return;
     }
-  }, [username]);
+
+    setIsCheckingUser(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/feishu/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'check',
+          userId: userId.trim(),
+          passwordHash: 'check', // dummy value for check action
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setIsNewUser(!result.exists);
+      }
+    } catch (err) {
+      console.error('Error checking user:', err);
+      // Fallback: assume new user on network error
+      setIsNewUser(true);
+    } finally {
+      setIsCheckingUser(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (username.trim()) {
+        checkUserExists(username);
+        setError('');
+      } else {
+        setIsNewUser(null);
+      }
+    }, 500); // Debounce 500ms
+
+    return () => clearTimeout(timer);
+  }, [username, checkUserExists]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,20 +78,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    const normalizedUsername = username.trim().toLowerCase();
-    const storedHash = localStorage.getItem(`${PASSWORD_STORAGE_PREFIX}${normalizedUsername}`);
-
     try {
       const inputHash = await hashPassword(password);
 
-      if (storedHash) {
-        // Existing user - verify password
-        if (inputHash === storedHash) {
-          onLogin(username.trim());
-        } else {
-          setError('密码错误，请重试');
-        }
-      } else {
+      if (isNewUser) {
         // New user - register
         if (password !== confirmPassword) {
           setError('两次输入的密码不一致');
@@ -67,11 +93,45 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           setIsLoading(false);
           return;
         }
-        localStorage.setItem(`${PASSWORD_STORAGE_PREFIX}${normalizedUsername}`, inputHash);
-        onLogin(username.trim());
+
+        const response = await fetch(`${API_BASE}/api/feishu/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register',
+            userId: username.trim(),
+            passwordHash: inputHash,
+          }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          onLogin(username.trim());
+        } else {
+          setError(result.message || '注册失败，请重试');
+        }
+      } else {
+        // Existing user - login
+        const response = await fetch(`${API_BASE}/api/feishu/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'login',
+            userId: username.trim(),
+            passwordHash: inputHash,
+          }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          onLogin(username.trim());
+        } else {
+          setError(result.message || '登录失败，请重试');
+        }
       }
     } catch (err) {
-      setError('登录出错，请重试');
+      console.error('Auth error:', err);
+      setError('网络错误，请检查连接后重试');
     } finally {
       setIsLoading(false);
     }
