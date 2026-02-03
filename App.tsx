@@ -278,7 +278,8 @@ function App() {
 
   // Manual refresh handler
   const handleRefresh = useCallback(async () => {
-    if (!currentUser || isRefreshingRef.current) return;
+    // Don't refresh while saving or already refreshing
+    if (!currentUser || isRefreshingRef.current || isSavingRef.current) return;
 
     isRefreshingRef.current = true;
     setSyncStatus('syncing');
@@ -333,7 +334,8 @@ function App() {
 
     // Setup periodic polling for cloud sync
     pollIntervalRef.current = setInterval(() => {
-      if (!isRefreshingRef.current && !syncTimerRef.current) {
+      // Don't poll while saving or refreshing
+      if (!isRefreshingRef.current && !syncTimerRef.current && !isSavingRef.current) {
         console.log('Periodic sync: checking for updates...');
         handleRefresh();
       }
@@ -844,6 +846,7 @@ function App() {
       };
 
       setSyncStatus('syncing');
+      isSavingRef.current = true;
       saveUserDataImmediate(currentUser, dataToSave)
         .then(() => {
           setSyncStatus('synced');
@@ -852,6 +855,9 @@ function App() {
         .catch((err) => {
           console.error('Failed to sync after drag:', err);
           setSyncStatus('error');
+        })
+        .finally(() => {
+          isSavingRef.current = false;
         });
     }
   }, [columns, tasks, ideaColumns, ideas, documents, currentUser, isInitialLoad, broadcastDataChange]);
