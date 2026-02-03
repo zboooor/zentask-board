@@ -58,8 +58,54 @@ const defaultIdeas: Idea[] = [];
 type ViewMode = 'tasks' | 'ideas';
 const STORAGE_PREFIX = 'zentask_v1_';
 
+// Generate a short hash from user ID for URL display
+function generateUserHash(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // Convert to base36 and take first 8 characters
+  const timestamp = Date.now().toString(36).slice(-4);
+  return Math.abs(hash).toString(36).slice(0, 4) + timestamp;
+}
+
+// Parse URL hash to extract user session info
+function parseUrlHash(): { user?: string; session?: string } {
+  const hash = window.location.hash.slice(1); // Remove #
+  if (!hash) return {};
+
+  const params = new URLSearchParams(hash);
+  return {
+    user: params.get('u') || undefined,
+    session: params.get('s') || undefined,
+  };
+}
+
+// Update URL hash with user session info
+function updateUrlHash(userId: string, sessionToken: string) {
+  const newHash = `u=${encodeURIComponent(userId)}&s=${sessionToken}`;
+  window.history.replaceState(null, '', `#${newHash}`);
+}
+
+// Clear URL hash on logout
+function clearUrlHash() {
+  window.history.replaceState(null, '', window.location.pathname);
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
+    // First, check URL hash for user info
+    const hashInfo = parseUrlHash();
+    if (hashInfo.user) {
+      // Validate session exists in localStorage
+      const storedSession = localStorage.getItem(`${STORAGE_PREFIX}session_${hashInfo.user}`);
+      if (storedSession === hashInfo.session) {
+        return hashInfo.user;
+      }
+    }
+    // Fallback to localStorage
     return localStorage.getItem(`${STORAGE_PREFIX}current_user`);
   });
 
@@ -143,6 +189,17 @@ function App() {
     if (currentUser && !dataLoadedRef.current) {
       dataLoadedRef.current = true;
       localStorage.setItem(`${STORAGE_PREFIX}current_user`, currentUser);
+
+      // Ensure URL has the session hash
+      const hashInfo = parseUrlHash();
+      if (!hashInfo.session || hashInfo.user !== currentUser) {
+        let sessionToken = localStorage.getItem(`${STORAGE_PREFIX}session_${currentUser}`);
+        if (!sessionToken) {
+          sessionToken = generateUserHash(currentUser);
+          localStorage.setItem(`${STORAGE_PREFIX}session_${currentUser}`, sessionToken);
+        }
+        updateUrlHash(currentUser, sessionToken);
+      }
 
       setSyncStatus('syncing');
       setIsInitialLoad(true);
@@ -282,8 +339,13 @@ function App() {
   }, [currentUser, handleRefresh]);
 
   const handleLogout = () => {
+    // Clear session token
+    if (currentUser) {
+      localStorage.removeItem(`${STORAGE_PREFIX}session_${currentUser}`);
+    }
     setCurrentUser(null);
     localStorage.removeItem(`${STORAGE_PREFIX}current_user`);
+    clearUrlHash();
   };
 
   const handleClearCache = () => {
@@ -731,8 +793,17 @@ function App() {
     }
   }
 
+  // Handle login with session token generation
+  const handleLogin = useCallback((userId: string) => {
+    const sessionToken = generateUserHash(userId);
+    localStorage.setItem(`${STORAGE_PREFIX}session_${userId}`, sessionToken);
+    localStorage.setItem(`${STORAGE_PREFIX}current_user`, userId);
+    updateUrlHash(userId, sessionToken);
+    setCurrentUser(userId);
+  }, []);
+
   if (!currentUser) {
-    return <LoginScreen onLogin={setCurrentUser} />;
+    return <LoginScreen onLogin={handleLogin} />;
   }
 
   return (
