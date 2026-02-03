@@ -81,8 +81,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     try {
       const inputHash = await hashPassword(password);
 
+      // For new user registration, validate passwords match
       if (isNewUser) {
-        // New user - register
         if (password !== confirmPassword) {
           setError('两次输入的密码不一致');
           setIsLoading(false);
@@ -93,41 +93,24 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           setIsLoading(false);
           return;
         }
+      }
 
-        const response = await fetch(`${API_BASE}/api/feishu/auth`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'register',
-            userId: username.trim(),
-            passwordHash: inputHash,
-          }),
-        });
+      // Use auto mode - server decides login or register based on user existence
+      const response = await fetch(`${API_BASE}/api/feishu/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'auto',
+          userId: username.trim(),
+          passwordHash: inputHash,
+        }),
+      });
 
-        const result = await response.json();
-        if (result.success) {
-          onLogin(username.trim());
-        } else {
-          setError(result.message || '注册失败，请重试');
-        }
+      const result = await response.json();
+      if (result.success) {
+        onLogin(username.trim());
       } else {
-        // Existing user - login
-        const response = await fetch(`${API_BASE}/api/feishu/auth`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'login',
-            userId: username.trim(),
-            passwordHash: inputHash,
-          }),
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          onLogin(username.trim());
-        } else {
-          setError(result.message || '登录失败，请重试');
-        }
+        setError(result.message || '操作失败，请重试');
       }
     } catch (err) {
       console.error('Auth error:', err);

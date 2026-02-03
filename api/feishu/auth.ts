@@ -209,7 +209,35 @@ export default async function handler(
       });
     }
 
-    return response.status(400).json({ error: 'Invalid action. Use: login, register, or check' });
+    if (action === 'auto') {
+      // Auto mode: server decides login or register
+      if (existingUser) {
+        // User exists - verify password
+        if (existingUser.fields.password_hash === passwordHash) {
+          return response.status(200).json({
+            success: true,
+            isNewUser: false,
+            message: '登录成功',
+          });
+        } else {
+          return response.status(200).json({
+            success: false,
+            error: 'INVALID_PASSWORD',
+            message: '密码错误，请重试',
+          });
+        }
+      } else {
+        // User doesn't exist - register
+        await createUser(normalizedUserId, passwordHash);
+        return response.status(200).json({
+          success: true,
+          isNewUser: true,
+          message: '注册成功',
+        });
+      }
+    }
+
+    return response.status(400).json({ error: 'Invalid action. Use: login, register, check, or auto' });
   } catch (error: any) {
     console.error('Auth API error:', error);
     return response.status(500).json({ error: error.message });
