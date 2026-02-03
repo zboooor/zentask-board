@@ -87,7 +87,9 @@ export async function saveUserDataImmediate(userId: string, data: UserData): Pro
     });
 
     if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorBody = await response.json().catch(() => ({}));
+        console.error('Sync error details:', errorBody);
+        throw new Error(`HTTP ${response.status}: ${errorBody.error || response.statusText}`);
     }
 }
 

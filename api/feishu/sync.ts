@@ -383,6 +383,10 @@ export default async function handler(
         return response.status(405).json({ error: 'Method not allowed' });
     } catch (error: any) {
         console.error('Sync API error:', error);
-        return response.status(500).json({ error: error.message });
+        console.error('Error stack:', error.stack);
+        return response.status(500).json({
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 }
