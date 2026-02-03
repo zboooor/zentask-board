@@ -787,6 +787,8 @@ function App() {
       setActiveIdea(active.data.current.idea);
     }
   }
+  // Ref to track if we need to sync after drag
+  const needsSyncAfterDragRef = useRef(false);
 
   function onDragEnd(event: DragEndEvent) {
     setActiveColumn(null);
@@ -807,38 +809,27 @@ function App() {
       setColumns((cols) => {
         const activeIndex = cols.findIndex((col) => col.id === activeId);
         const overIndex = cols.findIndex((col) => col.id === overId);
-        const newCols = arrayMove(cols, activeIndex, overIndex);
-        // Sync to cloud after reorder
-        if (currentUser) {
-          syncAfterDrag();
-        }
-        return newCols;
+        return arrayMove(cols, activeIndex, overIndex);
       });
+      needsSyncAfterDragRef.current = true;
     } else if (type === "IdeaColumn") {
       setIdeaColumns((cols) => {
         const activeIndex = cols.findIndex((col) => col.id === activeId);
         const overIndex = cols.findIndex((col) => col.id === overId);
-        const newCols = arrayMove(cols, activeIndex, overIndex);
-        // Sync to cloud after reorder
-        if (currentUser) {
-          syncAfterDrag();
-        }
-        return newCols;
+        return arrayMove(cols, activeIndex, overIndex);
       });
+      needsSyncAfterDragRef.current = true;
     } else if (type === "Task" || type === "Idea") {
-      // Task/Idea sorting happens in onDragOver, but we need to sync after drag ends
-      if (currentUser) {
-        syncAfterDrag();
-      }
+      // Task/Idea sorting happens in onDragOver, mark for sync
+      needsSyncAfterDragRef.current = true;
     }
   }
 
-  // Sync all data after drag reorder
-  const syncAfterDrag = useCallback(() => {
-    if (!currentUser) return;
+  // Effect to sync data after drag reorder (runs after state updates)
+  useEffect(() => {
+    if (needsSyncAfterDragRef.current && currentUser && !isInitialLoad) {
+      needsSyncAfterDragRef.current = false;
 
-    // Use setTimeout to ensure state updates are complete
-    setTimeout(() => {
       const dataToSave: UserData = {
         columns,
         tasks,
@@ -857,8 +848,8 @@ function App() {
           console.error('Failed to sync after drag:', err);
           setSyncStatus('error');
         });
-    }, 100);
-  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, broadcastDataChange]);
+    }
+  }, [columns, tasks, ideaColumns, ideas, documents, currentUser, isInitialLoad, broadcastDataChange]);
 
   function onDragOver(event: DragOverEvent) {
     const { active, over } = event;
