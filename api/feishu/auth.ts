@@ -211,9 +211,17 @@ export default async function handler(
 
     if (action === 'auto') {
       // Auto mode: server decides login or register
+      console.log('Auto mode - userId:', normalizedUserId);
+      console.log('Auto mode - existingUser:', existingUser ? JSON.stringify(existingUser) : 'null');
+      console.log('Auto mode - input passwordHash:', passwordHash);
+
       if (existingUser) {
         // User exists - verify password
-        if (existingUser.fields.password_hash === passwordHash) {
+        const storedHash = existingUser.fields.password_hash;
+        console.log('Auto mode - stored passwordHash:', storedHash);
+        console.log('Auto mode - hash match:', storedHash === passwordHash);
+
+        if (storedHash === passwordHash) {
           return response.status(200).json({
             success: true,
             isNewUser: false,
@@ -224,6 +232,12 @@ export default async function handler(
             success: false,
             error: 'INVALID_PASSWORD',
             message: '密码错误，请重试',
+            debug: {
+              storedHashLength: storedHash?.length,
+              inputHashLength: passwordHash?.length,
+              storedHashStart: storedHash?.substring(0, 10),
+              inputHashStart: passwordHash?.substring(0, 10),
+            }
           });
         }
       } else {
