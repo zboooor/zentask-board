@@ -3,13 +3,14 @@
  * Frontend service for communicating with the Feishu sync API
  */
 
-import { Column as ColumnType, Task, Idea } from '../types';
+import { Column as ColumnType, Task, Idea, Document } from '../types';
 
 export interface UserData {
     columns: ColumnType[];
     tasks: Task[];
     ideaColumns: ColumnType[];
     ideas: Idea[];
+    documents: Document[];
 }
 
 // API base URL - in production this will be relative, in dev it points to Vercel dev server
@@ -92,7 +93,7 @@ export async function saveUserDataImmediate(userId: string, data: UserData): Pro
 
 // ============= Single Record CRUD Operations =============
 
-export type TableType = 'tasks' | 'ideas' | 'columns';
+export type TableType = 'tasks' | 'ideas' | 'columns' | 'documents';
 
 // Record data types for API calls
 export interface RecordData {
@@ -104,6 +105,8 @@ export interface RecordData {
     isAiGenerated?: boolean;
     type?: 'task' | 'idea';
     sortOrder?: number;
+    createdAt?: number;
+    updatedAt?: number;
 }
 
 /**

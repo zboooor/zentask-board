@@ -69,6 +69,7 @@ const TABLE_IDS: Record<string, string> = {
     tasks: process.env.FEISHU_TASKS_TABLE_ID!,
     ideas: process.env.FEISHU_IDEAS_TABLE_ID!,
     columns: process.env.FEISHU_COLUMNS_TABLE_ID!,
+    documents: process.env.FEISHU_DOCUMENTS_TABLE_ID!,
 };
 
 // ============= CRUD Operations =============
@@ -106,6 +107,16 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             column_id: data.id,
             title: data.title,
             type: data.type || 'task',
+            sort_order: data.sortOrder || 0,
+        };
+    } else if (table === 'documents') {
+        fields = {
+            ...fields,
+            doc_id: data.id,
+            title: data.title || '',
+            content: data.content || '',
+            created_at: data.createdAt || Date.now(),
+            updated_at: data.updatedAt || Date.now(),
             sort_order: data.sortOrder || 0,
         };
     }
@@ -148,6 +159,13 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
         fields = {
             title: data.title,
             type: data.type || 'task',
+            sort_order: data.sortOrder || 0,
+        };
+    } else if (table === 'documents') {
+        fields = {
+            title: data.title || '',
+            content: data.content || '',
+            updated_at: Date.now(),
             sort_order: data.sortOrder || 0,
         };
     }

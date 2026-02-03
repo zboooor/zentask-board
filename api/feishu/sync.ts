@@ -85,6 +85,7 @@ const APP_TOKEN = process.env.FEISHU_APP_TOKEN!;
 const TASKS_TABLE_ID = process.env.FEISHU_TASKS_TABLE_ID!;
 const IDEAS_TABLE_ID = process.env.FEISHU_IDEAS_TABLE_ID!;
 const COLUMNS_TABLE_ID = process.env.FEISHU_COLUMNS_TABLE_ID!;
+const DOCUMENTS_TABLE_ID = process.env.FEISHU_DOCUMENTS_TABLE_ID!;
 
 
 interface Column {
@@ -109,11 +110,21 @@ interface Idea {
     isAiGenerated?: boolean;
 }
 
+interface Document {
+    id: string;
+    recordId?: string;
+    title: string;
+    content: string;
+    createdAt?: number;
+    updatedAt?: number;
+}
+
 interface UserData {
     columns: Column[];
     tasks: Task[];
     ideaColumns: Column[];
     ideas: Idea[];
+    documents: Document[];
 }
 
 /**
@@ -189,10 +200,11 @@ async function createRecords(tableId: string, records: any[]): Promise<void> {
  */
 async function handleGet(userId: string): Promise<UserData> {
     // Fetch all tables in parallel
-    const [columnsRecords, tasksRecords, ideasRecords] = await Promise.all([
+    const [columnsRecords, tasksRecords, ideasRecords, documentsRecords] = await Promise.all([
         fetchTableRecords(COLUMNS_TABLE_ID, userId),
         fetchTableRecords(TASKS_TABLE_ID, userId),
         fetchTableRecords(IDEAS_TABLE_ID, userId),
+        fetchTableRecords(DOCUMENTS_TABLE_ID, userId),
     ]);
 
     // Transform columns
@@ -236,7 +248,19 @@ async function handleGet(userId: string): Promise<UserData> {
             isAiGenerated: record.fields.is_ai_generated || false,
         }));
 
-    return { columns: taskColumns, tasks, ideaColumns, ideas };
+    // Transform documents
+    const documents: Document[] = documentsRecords
+        .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
+        .map((record) => ({
+            id: record.fields.doc_id,
+            recordId: record.record_id,
+            title: record.fields.title || '',
+            content: record.fields.content || '',
+            createdAt: record.fields.created_at,
+            updatedAt: record.fields.updated_at,
+        }));
+
+    return { columns: taskColumns, tasks, ideaColumns, ideas, documents };
 }
 
 /**
@@ -248,6 +272,7 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
         deleteUserRecords(COLUMNS_TABLE_ID, userId),
         deleteUserRecords(TASKS_TABLE_ID, userId),
         deleteUserRecords(IDEAS_TABLE_ID, userId),
+        deleteUserRecords(DOCUMENTS_TABLE_ID, userId),
     ]);
 
     // Prepare column records
@@ -296,11 +321,25 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
         },
     }));
 
+    // Prepare document records
+    const documentRecords = (data.documents || []).map((doc, index) => ({
+        fields: {
+            doc_id: doc.id,
+            user_id: userId,
+            title: doc.title,
+            content: doc.content,
+            created_at: doc.createdAt || Date.now(),
+            updated_at: doc.updatedAt || Date.now(),
+            sort_order: index,
+        },
+    }));
+
     // Create all records
     await Promise.all([
         createRecords(COLUMNS_TABLE_ID, columnRecords),
         createRecords(TASKS_TABLE_ID, taskRecords),
         createRecords(IDEAS_TABLE_ID, ideaRecords),
+        createRecords(DOCUMENTS_TABLE_ID, documentRecords),
     ]);
 }
 

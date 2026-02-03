@@ -14,13 +14,15 @@ import {
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
 import { createPortal } from 'react-dom';
 import { GoogleGenAI } from "@google/genai";
-import { Column as ColumnType, Task, Idea, Id } from './types';
+import { Column as ColumnType, Task, Idea, Id, Document } from './types';
 import Column from './components/Column';
 import TaskCard from './components/TaskCard';
 import IdeaColumn from './components/IdeaColumn';
 import IdeaCard from './components/IdeaCard';
 import LoginScreen from './components/LoginScreen';
-import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2 } from 'lucide-react';
+import DocumentList from './components/DocumentList';
+import DocumentEditor from './components/DocumentEditor';
+import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText } from 'lucide-react';
 import {
   fetchUserData,
   saveUserDataDebounced,
@@ -55,7 +57,9 @@ const defaultTasks: Task[] = [];
 
 const defaultIdeas: Idea[] = [];
 
-type ViewMode = 'tasks' | 'ideas';
+const defaultDocuments: Document[] = [];
+
+type ViewMode = 'tasks' | 'ideas' | 'docs';
 const STORAGE_PREFIX = 'zentask_v1_';
 
 // Generate a short hash from user ID for URL display
@@ -116,6 +120,8 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>(defaultTasks);
   const [ideaColumns, setIdeaColumns] = useState<ColumnType[]>(defaultIdeaCols);
   const [ideas, setIdeas] = useState<Idea[]>(defaultIdeas);
+  const [documents, setDocuments] = useState<Document[]>(defaultDocuments);
+  const [editingDocument, setEditingDocument] = useState<Document | null>(null);
 
   const [activeColumn, setActiveColumn] = useState<ColumnType | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -173,6 +179,7 @@ function App() {
         setTasks(parsed.tasks || defaultTasks);
         setIdeaColumns(parsed.ideaColumns || defaultIdeaCols);
         setIdeas(parsed.ideas || defaultIdeas);
+        setDocuments(parsed.documents || defaultDocuments);
       } catch (e) {
         console.error("Failed to load user data from localStorage", e);
       }
@@ -181,6 +188,7 @@ function App() {
       setTasks(defaultTasks);
       setIdeaColumns(defaultIdeaCols);
       setIdeas(defaultIdeas);
+      setDocuments(defaultDocuments);
     }
   }, []);
 
@@ -207,11 +215,12 @@ function App() {
       // Try to fetch from Feishu cloud
       fetchUserData(currentUser)
         .then((data) => {
-          if (data && (data.columns.length > 0 || data.tasks.length > 0 || data.ideas.length > 0)) {
+          if (data && (data.columns.length > 0 || data.tasks.length > 0 || data.ideas.length > 0 || (data.documents && data.documents.length > 0))) {
             setColumns(data.columns.length > 0 ? data.columns : defaultCols);
             setTasks(data.tasks);
             setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : defaultIdeaCols);
             setIdeas(data.ideas);
+            setDocuments(data.documents || defaultDocuments);
             // Also update localStorage as cache
             localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(data));
           } else {
@@ -256,14 +265,15 @@ function App() {
         columns,
         tasks,
         ideaColumns,
-        ideas
+        ideas,
+        documents
       };
 
       // Save to localStorage as cache only
       // Cloud sync is now handled incrementally by each CRUD operation
       localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(dataToSave));
     }
-  }, [currentUser, columns, tasks, ideaColumns, ideas, isInitialLoad]);
+  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, isInitialLoad]);
 
   // Manual refresh handler
   const handleRefresh = useCallback(async () => {
@@ -692,6 +702,72 @@ function App() {
     }
   };
 
+  // --- Document Functions ---
+
+  const createDocument = async () => {
+    const now = Date.now();
+    const newDoc: Document = {
+      id: generateId(),
+      title: `新文档 ${documents.length + 1}`,
+      content: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+    setDocuments([...documents, newDoc]);
+    setEditingDocument(newDoc);
+
+    // Sync to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        const recordId = await createRecord(currentUser, 'documents', { ...newDoc, sortOrder: documents.length });
+        setDocuments(prev => prev.map(d => d.id === newDoc.id ? { ...d, recordId } : d));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync document creation:', err);
+        setSyncStatus('error');
+      }
+    }
+  };
+
+  const deleteDocument = async (id: Id) => {
+    const doc = documents.find(d => d.id === id);
+    setDocuments(documents.filter((d) => d.id !== id));
+    if (editingDocument?.id === id) {
+      setEditingDocument(null);
+    }
+
+    // Sync to Feishu
+    if (currentUser && doc?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await deleteRecord('documents', doc.recordId);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync document deletion:', err);
+        setSyncStatus('error');
+      }
+    }
+  };
+
+  const updateDocument = useCallback((id: Id, title: string, content: string) => {
+    const updatedAt = Date.now();
+    setDocuments(prev => prev.map((doc) =>
+      doc.id === id ? { ...doc, title, content, updatedAt } : doc
+    ));
+
+    // Update editing document reference
+    if (editingDocument?.id === id) {
+      setEditingDocument(prev => prev ? { ...prev, title, content, updatedAt } : null);
+    }
+
+    // Sync to Feishu with debounce
+    const doc = documents.find(d => d.id === id);
+    if (currentUser && doc?.recordId) {
+      debouncedSync(() => updateRecord('documents', doc.recordId!, { title, content, updatedAt }));
+    }
+  }, [documents, editingDocument, currentUser, debouncedSync]);
+
 
 
   // --- DnD Handlers ---
@@ -832,6 +908,12 @@ function App() {
             >
               想法
             </button>
+            <button
+              onClick={() => { setView('docs'); setEditingDocument(null); }}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'docs' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              文档
+            </button>
           </div>
         </div>
 
@@ -947,7 +1029,7 @@ function App() {
                 </div>
               )}
             </div>
-          ) : (
+          ) : view === 'ideas' ? (
             // IDEAS VIEW
             <div className="flex gap-6 h-full min-w-max mx-auto">
               <SortableContext items={ideaColumnsId}>
@@ -970,6 +1052,24 @@ function App() {
                 <div className="flex flex-col items-center justify-center w-full h-[60vh] text-slate-400">
                   <p>还没有想法主题</p>
                 </div>
+              )}
+            </div>
+          ) : (
+            // DOCS VIEW
+            <div className="h-full">
+              {editingDocument ? (
+                <DocumentEditor
+                  document={editingDocument}
+                  onBack={() => setEditingDocument(null)}
+                  onUpdate={updateDocument}
+                />
+              ) : (
+                <DocumentList
+                  documents={documents}
+                  onSelect={setEditingDocument}
+                  onCreate={createDocument}
+                  onDelete={deleteDocument}
+                />
               )}
             </div>
           )}
