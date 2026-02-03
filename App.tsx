@@ -26,6 +26,7 @@ import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2
 import {
   fetchUserData,
   saveUserDataDebounced,
+  saveUserDataImmediate,
   processOfflineQueue,
   createRecord,
   updateRecord,
@@ -806,16 +807,58 @@ function App() {
       setColumns((cols) => {
         const activeIndex = cols.findIndex((col) => col.id === activeId);
         const overIndex = cols.findIndex((col) => col.id === overId);
-        return arrayMove(cols, activeIndex, overIndex);
+        const newCols = arrayMove(cols, activeIndex, overIndex);
+        // Sync to cloud after reorder
+        if (currentUser) {
+          syncAfterDrag();
+        }
+        return newCols;
       });
     } else if (type === "IdeaColumn") {
       setIdeaColumns((cols) => {
         const activeIndex = cols.findIndex((col) => col.id === activeId);
         const overIndex = cols.findIndex((col) => col.id === overId);
-        return arrayMove(cols, activeIndex, overIndex);
+        const newCols = arrayMove(cols, activeIndex, overIndex);
+        // Sync to cloud after reorder
+        if (currentUser) {
+          syncAfterDrag();
+        }
+        return newCols;
       });
+    } else if (type === "Task" || type === "Idea") {
+      // Task/Idea sorting happens in onDragOver, but we need to sync after drag ends
+      if (currentUser) {
+        syncAfterDrag();
+      }
     }
   }
+
+  // Sync all data after drag reorder
+  const syncAfterDrag = useCallback(() => {
+    if (!currentUser) return;
+
+    // Use setTimeout to ensure state updates are complete
+    setTimeout(() => {
+      const dataToSave: UserData = {
+        columns,
+        tasks,
+        ideaColumns,
+        ideas,
+        documents
+      };
+
+      setSyncStatus('syncing');
+      saveUserDataImmediate(currentUser, dataToSave)
+        .then(() => {
+          setSyncStatus('synced');
+          broadcastDataChange();
+        })
+        .catch((err) => {
+          console.error('Failed to sync after drag:', err);
+          setSyncStatus('error');
+        });
+    }, 100);
+  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, broadcastDataChange]);
 
   function onDragOver(event: DragOverEvent) {
     const { active, over } = event;
