@@ -801,9 +801,17 @@ function App() {
 
     const activeId = active.id;
     const overId = over.id;
-    if (activeId === overId) return;
-
     const type = active.data.current?.type;
+
+    // For Task/Idea, the reordering happens in onDragOver, so we always need to sync
+    // after a drag operation ends, regardless of whether activeId === overId
+    // (which happens when the item settles into its new position)
+    if (type === "Task" || type === "Idea") {
+      needsSyncAfterDragRef.current = true;
+    }
+
+    // For columns, only reorder if positions are different
+    if (activeId === overId) return;
 
     if (type === "Column") {
       setColumns((cols) => {
@@ -818,9 +826,6 @@ function App() {
         const overIndex = cols.findIndex((col) => col.id === overId);
         return arrayMove(cols, activeIndex, overIndex);
       });
-      needsSyncAfterDragRef.current = true;
-    } else if (type === "Task" || type === "Idea") {
-      // Task/Idea sorting happens in onDragOver, mark for sync
       needsSyncAfterDragRef.current = true;
     }
   }
