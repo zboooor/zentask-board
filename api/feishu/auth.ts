@@ -1,5 +1,66 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { feishuRequest, getTenantAccessToken } from './token';
+
+// ============= Token Management (inlined) =============
+
+interface TokenCache {
+  token: string;
+  expireAt: number;
+}
+
+let tokenCache: TokenCache | null = null;
+
+const FEISHU_APP_ID = process.env.FEISHU_APP_ID!;
+const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET!;
+
+async function getTenantAccessToken(): Promise<string> {
+  if (tokenCache && tokenCache.expireAt > Date.now() + 5 * 60 * 1000) {
+    return tokenCache.token;
+  }
+
+  const response = await fetch(
+    'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_id: FEISHU_APP_ID,
+        app_secret: FEISHU_APP_SECRET,
+      }),
+    }
+  );
+
+  const data = await response.json();
+  if (data.code !== 0) {
+    throw new Error(`Failed to get token: ${data.msg}`);
+  }
+
+  tokenCache = {
+    token: data.tenant_access_token,
+    expireAt: Date.now() + data.expire * 1000,
+  };
+
+  return tokenCache.token;
+}
+
+async function feishuRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  const token = await getTenantAccessToken();
+
+  const response = await fetch(`https://open.feishu.cn/open-apis${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  const data = await response.json();
+  if (data.code !== 0) {
+    throw new Error(`Feishu API error: ${data.msg} (code: ${data.code})`);
+  }
+
+  return data;
+}
 
 // ============= Configuration =============
 
