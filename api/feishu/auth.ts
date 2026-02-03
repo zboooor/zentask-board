@@ -79,26 +79,16 @@ interface UserRecord {
 }
 
 /**
- * Find user by user_id
+ * Find user by user_id using GET request with filter
  */
 async function findUser(userId: string): Promise<UserRecord | null> {
+  const params = new URLSearchParams({
+    filter: `CurrentValue.[user_id]="${userId}"`,
+    page_size: '1',
+  });
+
   const response = await feishuRequest(
-    `/bitable/v1/apps/${APP_TOKEN}/tables/${USERS_TABLE_ID}/records/search`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        filter: {
-          conjunction: 'and',
-          conditions: [
-            {
-              field_name: 'user_id',
-              operator: 'is',
-              value: [userId],
-            },
-          ],
-        },
-      }),
-    }
+    `/bitable/v1/apps/${APP_TOKEN}/tables/${USERS_TABLE_ID}/records?${params}`
   );
 
   const items = response.data?.items || [];
