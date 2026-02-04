@@ -161,6 +161,7 @@ function App() {
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [currentDocFolderId, setCurrentDocFolderId] = useState<Id | null>(null);
   const [unlockingFolder, setUnlockingFolder] = useState<DocumentFolder | null>(null);
+  const [unlockedFolders, setUnlockedFolders] = useState<Map<Id, string>>(new Map()); // folderId -> password
 
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
@@ -361,7 +362,7 @@ function App() {
         documents,
         documentFolders
       };
-      await saveUserDataImmediate(currentUser, dataToSave, unlockedColumns);
+      await saveUserDataImmediate(currentUser, dataToSave, unlockedColumns, unlockedFolders);
       setSyncStatus('synced');
       broadcastDataChange();
     } catch (err) {
@@ -370,7 +371,7 @@ function App() {
     } finally {
       isSavingRef.current = false;
     }
-  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, broadcastDataChange, unlockedColumns]);
+  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, documentFolders, broadcastDataChange, unlockedColumns, unlockedFolders]);
 
   // Cross-tab synchronization: BroadcastChannel + Polling
   useEffect(() => {
@@ -811,9 +812,6 @@ function App() {
 
   // --- Document Functions ---
 
-  // Unlocked document folders state: folderId -> password
-  const [unlockedFolders, setUnlockedFolders] = useState<Map<Id, string>>(new Map());
-
   const createDocument = async (folderId?: Id) => {
     const now = Date.now();
     const newDoc: Document = {
@@ -831,7 +829,21 @@ function App() {
     if (currentUser) {
       try {
         setSyncStatus('syncing');
-        const recordId = await createRecord(currentUser, 'documents', { ...newDoc, sortOrder: documents.length });
+
+        // Check if document is in an encrypted folder
+        let syncDoc = { ...newDoc, sortOrder: documents.length };
+        if (folderId) {
+          const folder = documentFolders.find(f => f.id === folderId);
+          const password = unlockedFolders.get(folderId);
+          if (folder?.isEncrypted && password) {
+            // Encrypt title and content before sync
+            const encryptedTitle = await encryptContent(newDoc.title, password);
+            const encryptedContent = await encryptContent(newDoc.content, password);
+            syncDoc = { ...syncDoc, title: encryptedTitle, content: encryptedContent };
+          }
+        }
+
+        const recordId = await createRecord(currentUser, 'documents', syncDoc);
         setDocuments(prev => prev.map(d => d.id === newDoc.id ? { ...d, recordId } : d));
         setSyncStatus('synced');
       } catch (err) {
@@ -861,7 +873,7 @@ function App() {
     }
   };
 
-  const updateDocument = useCallback((id: Id, title: string, content: string) => {
+  const updateDocument = useCallback(async (id: Id, title: string, content: string) => {
     const updatedAt = Date.now();
     setDocuments(prev => prev.map((doc) =>
       doc.id === id ? { ...doc, title, content, updatedAt } : doc
@@ -875,9 +887,21 @@ function App() {
     // Sync to Feishu with debounce
     const doc = documents.find(d => d.id === id);
     if (currentUser && doc?.recordId) {
-      debouncedSync(() => updateRecord('documents', doc.recordId!, { title, content, updatedAt }));
+      // Check if document is in an encrypted folder
+      let syncData: { title: string; content: string; updatedAt: number } = { title, content, updatedAt };
+      if (doc.folderId) {
+        const folder = documentFolders.find(f => f.id === doc.folderId);
+        const password = unlockedFolders.get(doc.folderId);
+        if (folder?.isEncrypted && password) {
+          // Encrypt title and content before sync
+          const encryptedTitle = await encryptContent(title, password);
+          const encryptedContent = await encryptContent(content, password);
+          syncData = { title: encryptedTitle, content: encryptedContent, updatedAt };
+        }
+      }
+      debouncedSync(() => updateRecord('documents', doc.recordId!, syncData));
     }
-  }, [documents, editingDocument, currentUser, debouncedSync]);
+  }, [documents, documentFolders, unlockedFolders, editingDocument, currentUser, debouncedSync]);
 
   // --- Document Folder Functions ---
 

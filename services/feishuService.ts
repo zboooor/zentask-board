@@ -85,9 +85,14 @@ export function saveUserDataDebounced(
 /**
  * Encrypt user data before sync
  * Encrypts content of tasks/ideas that belong to encrypted columns
+ * Encrypts title/content of documents in encrypted folders
  * SECURITY: Tasks/ideas in encrypted columns without available password will be excluded from sync
  */
-async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promise<UserData> {
+async function encryptDataForSync(
+    data: UserData,
+    passwords: PasswordMap,
+    folderPasswords?: PasswordMap
+): Promise<UserData> {
     // Create a set of encrypted column IDs with passwords
     const encryptedWithPassword = new Set<Id>();
     const columnPasswords = new Map<Id, string>();
@@ -202,12 +207,53 @@ async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promi
         })
     );
 
+    // Encrypt documents in encrypted folders
+    const encryptedFolderIds = new Set<Id>();
+    const folderPasswordMap = new Map<Id, string>();
+
+    for (const folder of data.documentFolders) {
+        if (folder.isEncrypted) {
+            encryptedFolderIds.add(folder.id);
+            if (folderPasswords?.has(folder.id)) {
+                folderPasswordMap.set(folder.id, folderPasswords.get(folder.id)!);
+            }
+        }
+    }
+
+    const encryptedDocuments = await Promise.all(
+        data.documents
+            .filter(doc => {
+                // If document is in an encrypted folder without password and content is NOT already encrypted, skip it
+                if (doc.folderId && encryptedFolderIds.has(doc.folderId) &&
+                    !folderPasswordMap.has(doc.folderId) &&
+                    !isEncryptedContent(doc.title) && !isEncryptedContent(doc.content)) {
+                    console.warn(`Skipping document sync: encrypted folder ${doc.folderId} missing password`);
+                    return false;
+                }
+                return true;
+            })
+            .map(async (doc) => {
+                if (doc.folderId && folderPasswordMap.has(doc.folderId)) {
+                    const password = folderPasswordMap.get(doc.folderId)!;
+                    let encryptedDoc = { ...doc };
+                    if (!isEncryptedContent(doc.title)) {
+                        encryptedDoc.title = await encryptContent(doc.title, password);
+                    }
+                    if (!isEncryptedContent(doc.content)) {
+                        encryptedDoc.content = await encryptContent(doc.content, password);
+                    }
+                    return encryptedDoc;
+                }
+                return doc;
+            })
+    );
+
     return {
         columns: encryptedColumns,
         tasks: encryptedTasks,
         ideaColumns: encryptedIdeaColumns,
         ideas: encryptedIdeas,
-        documents: data.documents, // Documents have their own encryption
+        documents: encryptedDocuments,
         documentFolders: data.documentFolders
     };
 }
@@ -215,8 +261,13 @@ async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promi
 /**
  * Decrypt user data after fetch
  * Decrypts content of tasks/ideas that belong to encrypted columns
+ * Decrypts title/content of documents in encrypted folders
  */
-export async function decryptDataAfterFetch(data: UserData, passwords: PasswordMap): Promise<UserData> {
+export async function decryptDataAfterFetch(
+    data: UserData,
+    passwords: PasswordMap,
+    folderPasswords?: PasswordMap
+): Promise<UserData> {
     // Create maps for quick lookup
     const columnPasswords = new Map<Id, string>();
 
@@ -295,24 +346,54 @@ export async function decryptDataAfterFetch(data: UserData, passwords: PasswordM
         })
     );
 
+    // Decrypt documents in encrypted folders
+    const folderPasswordMap = new Map<Id, string>();
+    for (const folder of data.documentFolders) {
+        if (folder.isEncrypted && folderPasswords?.has(folder.id)) {
+            folderPasswordMap.set(folder.id, folderPasswords.get(folder.id)!);
+        }
+    }
+
+    const decryptedDocuments = await Promise.all(
+        data.documents.map(async (doc) => {
+            if (doc.folderId && folderPasswordMap.has(doc.folderId)) {
+                try {
+                    const password = folderPasswordMap.get(doc.folderId)!;
+                    let decryptedDoc = { ...doc };
+                    if (isEncryptedContent(doc.title)) {
+                        decryptedDoc.title = await decryptContent(doc.title, password);
+                    }
+                    if (isEncryptedContent(doc.content)) {
+                        decryptedDoc.content = await decryptContent(doc.content, password);
+                    }
+                    return decryptedDoc;
+                } catch {
+                    return doc; // Keep encrypted if decryption fails
+                }
+            }
+            return doc;
+        })
+    );
+
     return {
         columns: decryptedColumns,
         tasks: decryptedTasks,
         ideaColumns: decryptedIdeaColumns,
         ideas: decryptedIdeas,
-        documents: data.documents,
+        documents: decryptedDocuments,
         documentFolders: data.documentFolders
     };
 }
 
 /**
  * Save user data immediately (no debounce)
- * Includes local backup for safety and encryption for encrypted columns
+ * Includes local backup for safety and encryption for encrypted columns/folders
  */
 export async function saveUserDataImmediate(
     userId: string,
     data: UserData,
-    passwords?: PasswordMap
+    passwords?: PasswordMap,
+    folderPasswords?: PasswordMap
 ): Promise<void> {
     // Step 1: Backup current data to localStorage before syncing
     localStorage.setItem(BACKUP_KEY, JSON.stringify({
@@ -322,8 +403,9 @@ export async function saveUserDataImmediate(
     }));
 
     // Step 2: Encrypt data if passwords are provided
-    const dataToSave = passwords && passwords.size > 0
-        ? await encryptDataForSync(data, passwords)
+    const hasPasswords = (passwords && passwords.size > 0) || (folderPasswords && folderPasswords.size > 0);
+    const dataToSave = hasPasswords
+        ? await encryptDataForSync(data, passwords || new Map(), folderPasswords)
         : data;
 
     const response = await fetch(`${API_BASE}/sync`, {
