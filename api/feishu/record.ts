@@ -112,8 +112,8 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             type: data.type || 'task',
             sort_order: data.sortOrder || 0,
             sync_version: Date.now(),
-            isEncrypted: data.isEncrypted || false,
-            encryptionSalt: data.encryptionSalt || '',
+            is_encrypted: data.isEncrypted || false,
+            encryption_salt: data.encryptionSalt || '',
         };
     } else if (table === 'documents') {
         fields = {
@@ -181,8 +181,8 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
             type: data.type || 'task',
             sort_order: data.sortOrder || 0,
             sync_version: Date.now(),
-            isEncrypted: data.isEncrypted,
-            encryptionSalt: data.encryptionSalt,
+            is_encrypted: data.isEncrypted,
+            encryption_salt: data.encryptionSalt,
         };
     } else if (table === 'documents') {
         fields = {
