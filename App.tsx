@@ -1633,8 +1633,23 @@ function App() {
           const computedHash = await generatePasswordHash(password, salt);
           if (computedHash === storedHash) {
             setUnlockedDocs(prev => new Map(prev).set(unlockingDocument.id, password));
-            // Open the document for editing
-            setEditingDocument(unlockingDocument);
+
+            // Decrypt the document content before opening
+            let decryptedDoc = { ...unlockingDocument };
+            if (isEncryptedContent(unlockingDocument.title)) {
+              decryptedDoc.title = await decryptContent(unlockingDocument.title, password);
+            }
+            if (isEncryptedContent(unlockingDocument.content)) {
+              decryptedDoc.content = await decryptContent(unlockingDocument.content, password);
+            }
+
+            // Update documents state with decrypted content
+            setDocuments(prev => prev.map(d =>
+              d.id === unlockingDocument.id ? decryptedDoc : d
+            ));
+
+            // Open the decrypted document for editing
+            setEditingDocument(decryptedDoc);
             return true;
           }
           return false;
