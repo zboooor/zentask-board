@@ -36,7 +36,7 @@ import {
 } from './services/feishuService';
 import CreateColumnDialog from './components/CreateColumnDialog';
 import UnlockDialog from './components/UnlockDialog';
-import { generateSalt, generatePasswordHash, encryptContent, decryptContent } from './utils/crypto';
+import { generateSalt, generatePasswordHash, encryptContent, decryptContent, isEncryptedContent } from './utils/crypto';
 
 // Gemini API Key storage key
 const GEMINI_API_KEY_STORAGE = 'zentask_gemini_api_key';
@@ -1409,7 +1409,53 @@ function App() {
           const [salt, storedHash] = saltAndHash;
           const computedHash = await generatePasswordHash(password, salt);
           if (computedHash === storedHash) {
+            // Save password to unlocked columns
             setUnlockedColumns(prev => new Map(prev).set(unlockingColumn.id, password));
+
+            // Decrypt tasks in this column
+            const columnTasks = tasks.filter(t => t.columnId === unlockingColumn.id);
+            const decryptedTasks = await Promise.all(
+              columnTasks.map(async (task) => {
+                if (isEncryptedContent(task.content)) {
+                  try {
+                    const decrypted = await decryptContent(task.content, password);
+                    return { ...task, content: decrypted };
+                  } catch (e) {
+                    console.error('Failed to decrypt task:', e);
+                    return task;
+                  }
+                }
+                return task;
+              })
+            );
+            // Update tasks state with decrypted content
+            setTasks(prev => prev.map(t => {
+              const decrypted = decryptedTasks.find(dt => dt.id === t.id);
+              return decrypted || t;
+            }));
+
+            // Decrypt ideas in this column (for idea columns)
+            const columnIdeas = ideas.filter(i => i.columnId === unlockingColumn.id);
+            const decryptedIdeas = await Promise.all(
+              columnIdeas.map(async (idea) => {
+                if (isEncryptedContent(idea.content)) {
+                  try {
+                    const decrypted = await decryptContent(idea.content, password);
+                    return { ...idea, content: decrypted };
+                  } catch (e) {
+                    console.error('Failed to decrypt idea:', e);
+                    return idea;
+                  }
+                }
+                return idea;
+              })
+            );
+            // Update ideas state with decrypted content
+            setIdeas(prev => prev.map(i => {
+              const decrypted = decryptedIdeas.find(di => di.id === i.id);
+              return decrypted || i;
+            }));
+
             return true;
           }
           return false;
