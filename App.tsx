@@ -22,7 +22,7 @@ import IdeaCard from './components/IdeaCard';
 import LoginScreen from './components/LoginScreen';
 import DocumentList from './components/DocumentList';
 import DocumentEditor from './components/DocumentEditor';
-import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText } from 'lucide-react';
+import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText, Upload } from 'lucide-react';
 import {
   fetchUserData,
   saveUserDataDebounced,
@@ -276,7 +276,7 @@ function App() {
     }
   }, [currentUser, columns, tasks, ideaColumns, ideas, documents, isInitialLoad]);
 
-  // Manual refresh handler
+  // Manual refresh handler (pull from cloud)
   const handleRefresh = useCallback(async () => {
     // Don't refresh while saving or already refreshing
     if (!currentUser || isRefreshingRef.current || isSavingRef.current) return;
@@ -314,6 +314,32 @@ function App() {
       isRefreshingRef.current = false;
     }
   }, [currentUser]);
+
+  // Manual retry sync handler (push local data to cloud)
+  const handleRetrySync = useCallback(async () => {
+    if (!currentUser || isSavingRef.current) return;
+
+    isSavingRef.current = true;
+    setSyncStatus('syncing');
+
+    try {
+      const dataToSave: UserData = {
+        columns,
+        tasks,
+        ideaColumns,
+        ideas,
+        documents
+      };
+      await saveUserDataImmediate(currentUser, dataToSave);
+      setSyncStatus('synced');
+      broadcastDataChange();
+    } catch (err) {
+      console.error('Retry sync failed:', err);
+      setSyncStatus('error');
+    } finally {
+      isSavingRef.current = false;
+    }
+  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, broadcastDataChange]);
 
   // Cross-tab synchronization: BroadcastChannel + Polling
   useEffect(() => {
@@ -973,7 +999,7 @@ function App() {
           {/* Sync Status Indicator */}
           <div className="flex items-center gap-2">
             <button
-              onClick={handleRefresh}
+              onClick={syncStatus === 'error' || syncStatus === 'offline' ? handleRetrySync : handleRefresh}
               disabled={syncStatus === 'syncing'}
               className={`p-2 rounded-lg transition-colors ${syncStatus === 'syncing'
                 ? 'text-blue-500 bg-blue-50 cursor-wait'
@@ -989,9 +1015,9 @@ function App() {
                   : syncStatus === 'synced'
                     ? '已同步到飞书 - 点击刷新'
                     : syncStatus === 'offline'
-                      ? '离线模式 - 点击重试'
+                      ? '离线模式 - 点击重新上传'
                       : syncStatus === 'error'
-                        ? '同步失败 - 点击重试'
+                        ? '同步失败 - 点击重新上传'
                         : '点击同步'
               }
             >
@@ -1000,7 +1026,7 @@ function App() {
               ) : syncStatus === 'synced' ? (
                 <Cloud size={18} />
               ) : syncStatus === 'offline' || syncStatus === 'error' ? (
-                <CloudOff size={18} />
+                <Upload size={18} />
               ) : (
                 <RefreshCw size={18} />
               )}
@@ -1008,8 +1034,8 @@ function App() {
             <span className="hidden lg:block text-xs text-slate-400">
               {syncStatus === 'syncing' && '同步中...'}
               {syncStatus === 'synced' && '已同步'}
-              {syncStatus === 'offline' && '离线'}
-              {syncStatus === 'error' && '同步失败'}
+              {syncStatus === 'offline' && '离线-点击上传'}
+              {syncStatus === 'error' && '失败-点击重试'}
             </span>
           </div>
 

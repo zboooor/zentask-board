@@ -26,6 +26,9 @@ const SAVE_DEBOUNCE_MS = 1500;
 // Local storage key for offline queue
 const OFFLINE_QUEUE_KEY = 'zentask_offline_queue';
 
+// Local storage key for backup before sync
+const BACKUP_KEY = 'zentask_data_backup';
+
 /**
  * Fetch user data from Feishu
  */
@@ -76,8 +79,16 @@ export function saveUserDataDebounced(
 
 /**
  * Save user data immediately (no debounce)
+ * Includes local backup for safety
  */
 export async function saveUserDataImmediate(userId: string, data: UserData): Promise<void> {
+    // Step 1: Backup current data to localStorage before syncing
+    localStorage.setItem(BACKUP_KEY, JSON.stringify({
+        userId,
+        data,
+        timestamp: Date.now()
+    }));
+
     const response = await fetch(`${API_BASE}/sync`, {
         method: 'POST',
         headers: {
@@ -91,6 +102,24 @@ export async function saveUserDataImmediate(userId: string, data: UserData): Pro
         console.error('Sync error details:', errorBody);
         throw new Error(`HTTP ${response.status}: ${errorBody.error || response.statusText}`);
     }
+
+    // Step 2: Clear backup after successful sync
+    localStorage.removeItem(BACKUP_KEY);
+}
+
+/**
+ * Get backup data if available (for recovery after failed sync)
+ */
+export function getBackupData(): { userId: string; data: UserData; timestamp: number } | null {
+    const backup = localStorage.getItem(BACKUP_KEY);
+    return backup ? JSON.parse(backup) : null;
+}
+
+/**
+ * Clear backup data manually
+ */
+export function clearBackupData(): void {
+    localStorage.removeItem(BACKUP_KEY);
 }
 
 // ============= Single Record CRUD Operations =============

@@ -155,12 +155,31 @@ async function fetchTableRecords(tableId: string, userId: string): Promise<any[]
 }
 
 /**
- * Delete all records for a user in a table
+ * Delete all records for a user in a table (DEPRECATED - kept for reference)
  */
 async function deleteUserRecords(tableId: string, userId: string): Promise<void> {
     const records = await fetchTableRecords(tableId, userId);
     const recordIds = records.map((r) => r.record_id);
 
+    if (recordIds.length === 0) return;
+
+    // Delete in batches of 500
+    for (let i = 0; i < recordIds.length; i += 500) {
+        const batch = recordIds.slice(i, i + 500);
+        await feishuRequest(
+            `/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records/batch_delete`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ records: batch }),
+            }
+        );
+    }
+}
+
+/**
+ * Delete records by their IDs (safe version - only deletes specific records)
+ */
+async function deleteRecordsByIds(tableId: string, recordIds: string[]): Promise<void> {
     if (recordIds.length === 0) return;
 
     // Delete in batches of 500
@@ -264,18 +283,28 @@ async function handleGet(userId: string): Promise<UserData> {
 }
 
 /**
- * POST handler - Save all user data (full replacement)
+ * POST handler - Save all user data (safe sync with sync_version)
+ * Strategy: Create new records FIRST, then delete old records
+ * This prevents data loss if network fails during creation
  */
 async function handlePost(userId: string, data: UserData): Promise<void> {
-    // Delete existing data
-    await Promise.all([
-        deleteUserRecords(COLUMNS_TABLE_ID, userId),
-        deleteUserRecords(TASKS_TABLE_ID, userId),
-        deleteUserRecords(IDEAS_TABLE_ID, userId),
-        deleteUserRecords(DOCUMENTS_TABLE_ID, userId),
+    // Generate a unique sync version timestamp
+    const syncVersion = Date.now();
+
+    // Step 1: Fetch old record IDs BEFORE creating new ones
+    const [oldColumns, oldTasks, oldIdeas, oldDocs] = await Promise.all([
+        fetchTableRecords(COLUMNS_TABLE_ID, userId),
+        fetchTableRecords(TASKS_TABLE_ID, userId),
+        fetchTableRecords(IDEAS_TABLE_ID, userId),
+        fetchTableRecords(DOCUMENTS_TABLE_ID, userId),
     ]);
 
-    // Prepare column records
+    const oldColumnIds = oldColumns.map(r => r.record_id);
+    const oldTaskIds = oldTasks.map(r => r.record_id);
+    const oldIdeaIds = oldIdeas.map(r => r.record_id);
+    const oldDocIds = oldDocs.map(r => r.record_id);
+
+    // Step 2: Prepare NEW records with sync_version
     const columnRecords = [
         ...data.columns.map((col, index) => ({
             fields: {
@@ -284,6 +313,7 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
                 title: col.title,
                 type: 'task',
                 sort_order: index,
+                sync_version: syncVersion,
             },
         })),
         ...data.ideaColumns.map((col, index) => ({
@@ -293,11 +323,11 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
                 title: col.title,
                 type: 'idea',
                 sort_order: index,
+                sync_version: syncVersion,
             },
         })),
     ];
 
-    // Prepare task records
     const taskRecords = data.tasks.map((task, index) => ({
         fields: {
             task_id: task.id,
@@ -306,10 +336,10 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
             content: task.content,
             completed: task.completed,
             sort_order: index,
+            sync_version: syncVersion,
         },
     }));
 
-    // Prepare idea records
     const ideaRecords = data.ideas.map((idea, index) => ({
         fields: {
             idea_id: idea.id,
@@ -318,10 +348,10 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
             content: idea.content,
             is_ai_generated: idea.isAiGenerated || false,
             sort_order: index,
+            sync_version: syncVersion,
         },
     }));
 
-    // Prepare document records
     const documentRecords = (data.documents || []).map((doc, index) => ({
         fields: {
             doc_id: doc.id,
@@ -331,15 +361,25 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
             created_at: doc.createdAt || Date.now(),
             updated_at: doc.updatedAt || Date.now(),
             sort_order: index,
+            sync_version: syncVersion,
         },
     }));
 
-    // Create all records
+    // Step 3: Create NEW records first (safe - old data still exists if this fails)
     await Promise.all([
         createRecords(COLUMNS_TABLE_ID, columnRecords),
         createRecords(TASKS_TABLE_ID, taskRecords),
         createRecords(IDEAS_TABLE_ID, ideaRecords),
         createRecords(DOCUMENTS_TABLE_ID, documentRecords),
+    ]);
+
+    // Step 4: Delete OLD records only after successful creation
+    // If this fails, next sync will clean up duplicates via sync_version
+    await Promise.all([
+        deleteRecordsByIds(COLUMNS_TABLE_ID, oldColumnIds),
+        deleteRecordsByIds(TASKS_TABLE_ID, oldTaskIds),
+        deleteRecordsByIds(IDEAS_TABLE_ID, oldIdeaIds),
+        deleteRecordsByIds(DOCUMENTS_TABLE_ID, oldDocIds),
     ]);
 }
 
