@@ -240,11 +240,70 @@ async function handleGet(userId: string): Promise<UserData> {
         fetchTableRecords(DOCUMENT_FOLDERS_TABLE_ID, userId),
     ]);
 
+    // Deduplicate records by ID, keeping only the ones with the highest sync_version
+    // Also collect old record IDs for cleanup
+    const deduplicateRecords = <T extends { record_id: string; fields: { [key: string]: any } }>(
+        records: T[],
+        idField: string
+    ): { latest: T[]; oldRecordIds: string[] } => {
+        const byId = new Map<string, T[]>();
+
+        // Group records by their logical ID
+        for (const record of records) {
+            const id = record.fields[idField];
+            if (!byId.has(id)) {
+                byId.set(id, []);
+            }
+            byId.get(id)!.push(record);
+        }
+
+        const latest: T[] = [];
+        const oldRecordIds: string[] = [];
+
+        // For each logical ID, keep only the record with highest sync_version
+        for (const [, group] of byId) {
+            if (group.length === 1) {
+                latest.push(group[0]);
+            } else {
+                // Sort by sync_version descending
+                group.sort((a, b) => (b.fields.sync_version || 0) - (a.fields.sync_version || 0));
+                latest.push(group[0]); // Keep the newest
+                // Mark rest for cleanup
+                for (let i = 1; i < group.length; i++) {
+                    oldRecordIds.push(group[i].record_id);
+                }
+            }
+        }
+
+        return { latest, oldRecordIds };
+    };
+
+    // Deduplicate all tables
+    const { latest: dedupedColumns, oldRecordIds: oldColumnIds } = deduplicateRecords(columnsRecords, 'column_id');
+    const { latest: dedupedTasks, oldRecordIds: oldTaskIds } = deduplicateRecords(tasksRecords, 'task_id');
+    const { latest: dedupedIdeas, oldRecordIds: oldIdeaIds } = deduplicateRecords(ideasRecords, 'idea_id');
+    const { latest: dedupedDocs, oldRecordIds: oldDocIds } = deduplicateRecords(documentsRecords, 'doc_id');
+    const { latest: dedupedFolders, oldRecordIds: oldFolderIds } = deduplicateRecords(documentFoldersRecords, 'folder_id');
+
+    // Cleanup old duplicate records in the background (fire and forget)
+    const hasOldRecords = oldColumnIds.length > 0 || oldTaskIds.length > 0 || oldIdeaIds.length > 0 || oldDocIds.length > 0 || oldFolderIds.length > 0;
+    if (hasOldRecords) {
+        console.log(`Cleaning up duplicates: columns=${oldColumnIds.length}, tasks=${oldTaskIds.length}, ideas=${oldIdeaIds.length}, docs=${oldDocIds.length}, folders=${oldFolderIds.length}`);
+        // Don't await - let cleanup happen in background
+        Promise.all([
+            deleteRecordsByIds(COLUMNS_TABLE_ID, oldColumnIds),
+            deleteRecordsByIds(TASKS_TABLE_ID, oldTaskIds),
+            deleteRecordsByIds(IDEAS_TABLE_ID, oldIdeaIds),
+            deleteRecordsByIds(DOCUMENTS_TABLE_ID, oldDocIds),
+            deleteRecordsByIds(DOCUMENT_FOLDERS_TABLE_ID, oldFolderIds),
+        ]).catch(err => console.error('Background cleanup failed:', err));
+    }
+
     // Transform columns
     const taskColumns: Column[] = [];
     const ideaColumns: Column[] = [];
 
-    columnsRecords
+    dedupedColumns
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .forEach((record) => {
             const col: Column = {
@@ -262,7 +321,7 @@ async function handleGet(userId: string): Promise<UserData> {
         });
 
     // Transform tasks
-    const tasks: Task[] = tasksRecords
+    const tasks: Task[] = dedupedTasks
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .map((record) => ({
             id: record.fields.task_id,
@@ -273,7 +332,7 @@ async function handleGet(userId: string): Promise<UserData> {
         }));
 
     // Transform ideas
-    const ideas: Idea[] = ideasRecords
+    const ideas: Idea[] = dedupedIdeas
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .map((record) => ({
             id: record.fields.idea_id,
@@ -284,7 +343,7 @@ async function handleGet(userId: string): Promise<UserData> {
         }));
 
     // Transform documents
-    const documents: Document[] = documentsRecords
+    const documents: Document[] = dedupedDocs
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .map((record) => ({
             id: record.fields.doc_id,
@@ -297,7 +356,7 @@ async function handleGet(userId: string): Promise<UserData> {
         }));
 
     // Transform document folders
-    const documentFolders: DocumentFolder[] = documentFoldersRecords
+    const documentFolders: DocumentFolder[] = dedupedFolders
         .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
         .map((record) => ({
             id: record.fields.folder_id,
