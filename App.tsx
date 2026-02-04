@@ -340,7 +340,7 @@ function App() {
         ideas,
         documents
       };
-      await saveUserDataImmediate(currentUser, dataToSave);
+      await saveUserDataImmediate(currentUser, dataToSave, unlockedColumns);
       setSyncStatus('synced');
       broadcastDataChange();
     } catch (err) {
@@ -349,7 +349,7 @@ function App() {
     } finally {
       isSavingRef.current = false;
     }
-  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, broadcastDataChange]);
+  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, broadcastDataChange, unlockedColumns]);
 
   // Cross-tab synchronization: BroadcastChannel + Polling
   useEffect(() => {
@@ -532,6 +532,7 @@ function App() {
   };
 
   const createTask = async (columnId: Id) => {
+    const column = columns.find(c => c.id === columnId);
     const newTask: Task = {
       id: generateId(),
       columnId,
@@ -544,7 +545,13 @@ function App() {
     if (currentUser) {
       try {
         setSyncStatus('syncing');
-        const recordId = await createRecord(currentUser, 'tasks', { ...newTask, sortOrder: tasks.length });
+        // Encrypt content if column is encrypted and unlocked
+        let contentToSync = newTask.content;
+        if (column?.isEncrypted && unlockedColumns.has(columnId)) {
+          const password = unlockedColumns.get(columnId)!;
+          contentToSync = await encryptContent(newTask.content, password);
+        }
+        const recordId = await createRecord(currentUser, 'tasks', { ...newTask, content: contentToSync, sortOrder: tasks.length });
         setTasks(prev => prev.map(t => t.id === newTask.id ? { ...t, recordId } : t));
         setSyncStatus('synced');
       } catch (err) {
@@ -571,13 +578,21 @@ function App() {
     }
   };
 
-  const updateTask = (id: Id, content: string) => {
+  const updateTask = async (id: Id, content: string) => {
     setTasks(tasks.map((task) => (task.id === id ? { ...task, content } : task)));
 
     // Sync to Feishu with debounce (wait for user to finish typing)
     const task = tasks.find(t => t.id === id);
     if (currentUser && task?.recordId) {
-      debouncedSync(() => updateRecord('tasks', task.recordId!, { ...task, content }));
+      // Check if column is encrypted
+      const column = columns.find(c => c.id === task.columnId);
+      if (column?.isEncrypted && unlockedColumns.has(task.columnId)) {
+        const password = unlockedColumns.get(task.columnId)!;
+        const encryptedContent = await encryptContent(content, password);
+        debouncedSync(() => updateRecord('tasks', task.recordId!, { ...task, content: encryptedContent }));
+      } else {
+        debouncedSync(() => updateRecord('tasks', task.recordId!, { ...task, content }));
+      }
     }
   };
 
@@ -642,6 +657,7 @@ function App() {
   };
 
   const createIdea = async (columnId: Id) => {
+    const column = ideaColumns.find(c => c.id === columnId);
     const newIdea: Idea = {
       id: generateId(),
       columnId,
@@ -653,7 +669,13 @@ function App() {
     if (currentUser) {
       try {
         setSyncStatus('syncing');
-        const recordId = await createRecord(currentUser, 'ideas', { ...newIdea, sortOrder: ideas.length });
+        // Encrypt content if column is encrypted and unlocked
+        let contentToSync = newIdea.content;
+        if (column?.isEncrypted && unlockedColumns.has(columnId)) {
+          const password = unlockedColumns.get(columnId)!;
+          contentToSync = await encryptContent(newIdea.content, password);
+        }
+        const recordId = await createRecord(currentUser, 'ideas', { ...newIdea, content: contentToSync, sortOrder: ideas.length });
         setIdeas(prev => prev.map(i => i.id === newIdea.id ? { ...i, recordId } : i));
         setSyncStatus('synced');
       } catch (err) {
@@ -680,13 +702,21 @@ function App() {
     }
   };
 
-  const updateIdea = (id: Id, content: string) => {
+  const updateIdea = async (id: Id, content: string) => {
     setIdeas(ideas.map((idea) => (idea.id === id ? { ...idea, content } : idea)));
 
     // Sync to Feishu with debounce
     const idea = ideas.find(i => i.id === id);
     if (currentUser && idea?.recordId) {
-      debouncedSync(() => updateRecord('ideas', idea.recordId!, { ...idea, content }));
+      // Check if column is encrypted
+      const column = ideaColumns.find(c => c.id === idea.columnId);
+      if (column?.isEncrypted && unlockedColumns.has(idea.columnId)) {
+        const password = unlockedColumns.get(idea.columnId)!;
+        const encryptedContent = await encryptContent(content, password);
+        debouncedSync(() => updateRecord('ideas', idea.recordId!, { ...idea, content: encryptedContent }));
+      } else {
+        debouncedSync(() => updateRecord('ideas', idea.recordId!, { ...idea, content }));
+      }
     }
   };
 

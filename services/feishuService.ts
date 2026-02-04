@@ -3,7 +3,8 @@
  * Frontend service for communicating with the Feishu sync API
  */
 
-import { Column as ColumnType, Task, Idea, Document } from '../types';
+import { Column as ColumnType, Task, Idea, Document, Id } from '../types';
+import { encryptContent, decryptContent, isEncryptedContent } from '../utils/crypto';
 
 export interface UserData {
     columns: ColumnType[];
@@ -12,6 +13,9 @@ export interface UserData {
     ideas: Idea[];
     documents: Document[];
 }
+
+// Password map type: columnId -> password
+export type PasswordMap = Map<Id, string>;
 
 // API base URL - in production this will be relative, in dev it points to Vercel dev server
 const API_BASE = '/api/feishu';
@@ -78,10 +82,187 @@ export function saveUserDataDebounced(
 }
 
 /**
- * Save user data immediately (no debounce)
- * Includes local backup for safety
+ * Encrypt user data before sync
+ * Encrypts content of tasks/ideas that belong to encrypted columns
  */
-export async function saveUserDataImmediate(userId: string, data: UserData): Promise<void> {
+async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promise<UserData> {
+    // Create a set of encrypted column IDs
+    const encryptedColumnIds = new Set<Id>();
+    const columnPasswords = new Map<Id, string>();
+
+    // Collect encrypted columns (task columns)
+    for (const col of data.columns) {
+        if (col.isEncrypted && passwords.has(col.id)) {
+            encryptedColumnIds.add(col.id);
+            columnPasswords.set(col.id, passwords.get(col.id)!);
+        }
+    }
+
+    // Collect encrypted columns (idea columns)
+    for (const col of data.ideaColumns) {
+        if (col.isEncrypted && passwords.has(col.id)) {
+            encryptedColumnIds.add(col.id);
+            columnPasswords.set(col.id, passwords.get(col.id)!);
+        }
+    }
+
+    // Encrypt tasks
+    const encryptedTasks = await Promise.all(
+        data.tasks.map(async (task) => {
+            if (encryptedColumnIds.has(task.columnId) && !isEncryptedContent(task.content)) {
+                const password = columnPasswords.get(task.columnId)!;
+                const encryptedContent = await encryptContent(task.content, password);
+                return { ...task, content: encryptedContent };
+            }
+            return task;
+        })
+    );
+
+    // Encrypt ideas
+    const encryptedIdeas = await Promise.all(
+        data.ideas.map(async (idea) => {
+            if (encryptedColumnIds.has(idea.columnId) && !isEncryptedContent(idea.content)) {
+                const password = columnPasswords.get(idea.columnId)!;
+                const encryptedContent = await encryptContent(idea.content, password);
+                return { ...idea, content: encryptedContent };
+            }
+            return idea;
+        })
+    );
+
+    // Encrypt column titles for encrypted columns
+    const encryptedColumns = await Promise.all(
+        data.columns.map(async (col) => {
+            if (col.isEncrypted && passwords.has(col.id) && !isEncryptedContent(col.title)) {
+                const password = passwords.get(col.id)!;
+                const encryptedTitle = await encryptContent(col.title, password);
+                return { ...col, title: encryptedTitle };
+            }
+            return col;
+        })
+    );
+
+    const encryptedIdeaColumns = await Promise.all(
+        data.ideaColumns.map(async (col) => {
+            if (col.isEncrypted && passwords.has(col.id) && !isEncryptedContent(col.title)) {
+                const password = passwords.get(col.id)!;
+                const encryptedTitle = await encryptContent(col.title, password);
+                return { ...col, title: encryptedTitle };
+            }
+            return col;
+        })
+    );
+
+    return {
+        columns: encryptedColumns,
+        tasks: encryptedTasks,
+        ideaColumns: encryptedIdeaColumns,
+        ideas: encryptedIdeas,
+        documents: data.documents // Documents have their own encryption
+    };
+}
+
+/**
+ * Decrypt user data after fetch
+ * Decrypts content of tasks/ideas that belong to encrypted columns
+ */
+export async function decryptDataAfterFetch(data: UserData, passwords: PasswordMap): Promise<UserData> {
+    // Create maps for quick lookup
+    const columnPasswords = new Map<Id, string>();
+
+    // Collect passwords for encrypted columns
+    for (const col of data.columns) {
+        if (col.isEncrypted && passwords.has(col.id)) {
+            columnPasswords.set(col.id, passwords.get(col.id)!);
+        }
+    }
+    for (const col of data.ideaColumns) {
+        if (col.isEncrypted && passwords.has(col.id)) {
+            columnPasswords.set(col.id, passwords.get(col.id)!);
+        }
+    }
+
+    // Decrypt tasks
+    const decryptedTasks = await Promise.all(
+        data.tasks.map(async (task) => {
+            if (columnPasswords.has(task.columnId) && isEncryptedContent(task.content)) {
+                try {
+                    const password = columnPasswords.get(task.columnId)!;
+                    const decryptedContent = await decryptContent(task.content, password);
+                    return { ...task, content: decryptedContent };
+                } catch {
+                    return task; // Keep encrypted if decryption fails
+                }
+            }
+            return task;
+        })
+    );
+
+    // Decrypt ideas
+    const decryptedIdeas = await Promise.all(
+        data.ideas.map(async (idea) => {
+            if (columnPasswords.has(idea.columnId) && isEncryptedContent(idea.content)) {
+                try {
+                    const password = columnPasswords.get(idea.columnId)!;
+                    const decryptedContent = await decryptContent(idea.content, password);
+                    return { ...idea, content: decryptedContent };
+                } catch {
+                    return idea;
+                }
+            }
+            return idea;
+        })
+    );
+
+    // Decrypt column titles
+    const decryptedColumns = await Promise.all(
+        data.columns.map(async (col) => {
+            if (col.isEncrypted && passwords.has(col.id) && isEncryptedContent(col.title)) {
+                try {
+                    const password = passwords.get(col.id)!;
+                    const decryptedTitle = await decryptContent(col.title, password);
+                    return { ...col, title: decryptedTitle };
+                } catch {
+                    return col;
+                }
+            }
+            return col;
+        })
+    );
+
+    const decryptedIdeaColumns = await Promise.all(
+        data.ideaColumns.map(async (col) => {
+            if (col.isEncrypted && passwords.has(col.id) && isEncryptedContent(col.title)) {
+                try {
+                    const password = passwords.get(col.id)!;
+                    const decryptedTitle = await decryptContent(col.title, password);
+                    return { ...col, title: decryptedTitle };
+                } catch {
+                    return col;
+                }
+            }
+            return col;
+        })
+    );
+
+    return {
+        columns: decryptedColumns,
+        tasks: decryptedTasks,
+        ideaColumns: decryptedIdeaColumns,
+        ideas: decryptedIdeas,
+        documents: data.documents
+    };
+}
+
+/**
+ * Save user data immediately (no debounce)
+ * Includes local backup for safety and encryption for encrypted columns
+ */
+export async function saveUserDataImmediate(
+    userId: string,
+    data: UserData,
+    passwords?: PasswordMap
+): Promise<void> {
     // Step 1: Backup current data to localStorage before syncing
     localStorage.setItem(BACKUP_KEY, JSON.stringify({
         userId,
@@ -89,12 +270,17 @@ export async function saveUserDataImmediate(userId: string, data: UserData): Pro
         timestamp: Date.now()
     }));
 
+    // Step 2: Encrypt data if passwords are provided
+    const dataToSave = passwords && passwords.size > 0
+        ? await encryptDataForSync(data, passwords)
+        : data;
+
     const response = await fetch(`${API_BASE}/sync`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId, data }),
+        body: JSON.stringify({ userId, data: dataToSave }),
     });
 
     if (!response.ok) {
@@ -103,7 +289,7 @@ export async function saveUserDataImmediate(userId: string, data: UserData): Pro
         throw new Error(`HTTP ${response.status}: ${errorBody.error || response.statusText}`);
     }
 
-    // Step 2: Clear backup after successful sync
+    // Step 3: Clear backup after successful sync
     localStorage.removeItem(BACKUP_KEY);
 }
 
