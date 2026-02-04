@@ -361,16 +361,19 @@ export function clearBackupData(): void {
 
 // ============= Single Record CRUD Operations =============
 
-export type TableType = 'tasks' | 'ideas' | 'columns' | 'documents';
+export type TableType = 'tasks' | 'ideas' | 'columns' | 'documents' | 'documentFolders';
 
 // Record data types for API calls
 export interface RecordData {
     id?: string | number;
     columnId?: string | number;
+    folderId?: string | number;
     content?: string;
     title?: string;
     completed?: boolean;
     isAiGenerated?: boolean;
+    isEncrypted?: boolean;
+    encryptionSalt?: string;
     type?: 'task' | 'idea';
     sortOrder?: number;
     createdAt?: number;

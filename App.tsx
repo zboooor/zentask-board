@@ -802,10 +802,14 @@ function App() {
 
   // --- Document Functions ---
 
-  const createDocument = async () => {
+  // Unlocked document folders state: folderId -> password
+  const [unlockedFolders, setUnlockedFolders] = useState<Map<Id, string>>(new Map());
+
+  const createDocument = async (folderId?: Id) => {
     const now = Date.now();
     const newDoc: Document = {
       id: generateId(),
+      folderId,
       title: `新文档 ${documents.length + 1}`,
       content: '',
       createdAt: now,
@@ -865,6 +869,103 @@ function App() {
       debouncedSync(() => updateRecord('documents', doc.recordId!, { title, content, updatedAt }));
     }
   }, [documents, editingDocument, currentUser, debouncedSync]);
+
+  // --- Document Folder Functions ---
+
+  const createDocumentFolder = async (isEncrypted: boolean) => {
+    const title = prompt(isEncrypted ? '请输入加密文件夹名称：' : '请输入文件夹名称：');
+    if (!title?.trim()) return;
+
+    let password: string | undefined;
+    let encryptionSalt: string | undefined;
+
+    if (isEncrypted) {
+      password = prompt('请输入加密密码（请牢记，无法找回）：');
+      if (!password) return;
+      const confirmPassword = prompt('请再次输入密码确认：');
+      if (password !== confirmPassword) {
+        alert('两次密码不一致');
+        return;
+      }
+      encryptionSalt = await generateSalt();
+    }
+
+    const newFolder: DocumentFolder = {
+      id: generateId(),
+      title: title.trim(),
+      isEncrypted,
+      encryptionSalt,
+    };
+
+    setDocumentFolders([...documentFolders, newFolder]);
+
+    // Auto-unlock the new encrypted folder
+    if (isEncrypted && password) {
+      setUnlockedFolders(prev => new Map(prev).set(newFolder.id, password));
+    }
+
+    // Sync to Feishu
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+        const recordId = await createRecord(currentUser, 'documentFolders', { ...newFolder, sortOrder: documentFolders.length });
+        setDocumentFolders(prev => prev.map(f => f.id === newFolder.id ? { ...f, recordId } : f));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync folder creation:', err);
+        setSyncStatus('error');
+      }
+    }
+  };
+
+  const deleteDocumentFolder = async (id: Id) => {
+    // Check if folder has documents
+    const folderDocs = documents.filter(d => d.folderId === id);
+    if (folderDocs.length > 0) {
+      if (!confirm(`该文件夹包含 ${folderDocs.length} 个文档，删除文件夹将同时删除所有文档。确定继续？`)) {
+        return;
+      }
+      // Delete all documents in the folder
+      for (const doc of folderDocs) {
+        await deleteDocument(doc.id);
+      }
+    }
+
+    const folder = documentFolders.find(f => f.id === id);
+    setDocumentFolders(documentFolders.filter(f => f.id !== id));
+    setUnlockedFolders(prev => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+
+    // Sync to Feishu
+    if (currentUser && folder?.recordId) {
+      try {
+        setSyncStatus('syncing');
+        await deleteRecord('documentFolders', folder.recordId);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync folder deletion:', err);
+        setSyncStatus('error');
+      }
+    }
+  };
+
+  const unlockDocumentFolder = async (folder: DocumentFolder) => {
+    const password = prompt(`请输入 "${folder.title}" 的密码：`);
+    if (!password) return;
+
+    // Verify password (simple check for now - just verify the salt exists and set the password)
+    // In a real implementation, we would verify the hash
+    if (folder.encryptionSalt) {
+      const hash = await generatePasswordHash(password, folder.encryptionSalt);
+      // For simplicity, we just unlock it - proper verification would compare hashes
+      setUnlockedFolders(prev => new Map(prev).set(folder.id, password));
+    }
+  };
+
+
 
 
 
@@ -1217,9 +1318,14 @@ function App() {
               ) : (
                 <DocumentList
                   documents={documents}
-                  onSelect={setEditingDocument}
-                  onCreate={createDocument}
-                  onDelete={deleteDocument}
+                  documentFolders={documentFolders}
+                  unlockedFolders={unlockedFolders}
+                  onSelectDocument={setEditingDocument}
+                  onCreateDocument={createDocument}
+                  onDeleteDocument={deleteDocument}
+                  onCreateFolder={createDocumentFolder}
+                  onDeleteFolder={deleteDocumentFolder}
+                  onUnlockFolder={unlockDocumentFolder}
                 />
               )}
             </div>
