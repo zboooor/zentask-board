@@ -91,6 +91,7 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             content: data.content,
             completed: data.completed || false,
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
         };
     } else if (table === 'ideas') {
         fields = {
@@ -100,6 +101,7 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             content: data.content,
             is_ai_generated: data.isAiGenerated || false,
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
         };
     } else if (table === 'columns') {
         fields = {
@@ -108,6 +110,9 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             title: data.title,
             type: data.type || 'task',
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
+            isEncrypted: data.isEncrypted || false,
+            encryptionSalt: data.encryptionSalt || '',
         };
     } else if (table === 'documents') {
         fields = {
@@ -118,6 +123,7 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             created_at: data.createdAt || Date.now(),
             updated_at: data.updatedAt || Date.now(),
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
         };
     }
 
@@ -147,6 +153,7 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
             content: data.content,
             completed: data.completed || false,
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
         };
     } else if (table === 'ideas') {
         fields = {
@@ -154,12 +161,16 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
             content: data.content,
             is_ai_generated: data.isAiGenerated || false,
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
         };
     } else if (table === 'columns') {
         fields = {
             title: data.title,
             type: data.type || 'task',
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
+            isEncrypted: data.isEncrypted,
+            encryptionSalt: data.encryptionSalt,
         };
     } else if (table === 'documents') {
         fields = {
@@ -167,6 +178,7 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
             content: data.content || '',
             updated_at: Date.now(),
             sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
         };
     }
 
