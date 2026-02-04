@@ -20,6 +20,8 @@ export interface Column {
   id: Id;
   recordId?: string;  // Feishu record ID for incremental sync
   title: string;
+  isEncrypted?: boolean;      // Whether this column is encrypted
+  encryptionSalt?: string;    // Salt for password verification
 }
 
 export interface Document {
@@ -29,4 +31,7 @@ export interface Document {
   content: string;
   createdAt?: number;
   updatedAt?: number;
+  isEncrypted?: boolean;      // Whether this document is encrypted
+  encryptionSalt?: string;    // Salt for password verification
 }
+

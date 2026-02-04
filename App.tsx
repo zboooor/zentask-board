@@ -22,7 +22,7 @@ import IdeaCard from './components/IdeaCard';
 import LoginScreen from './components/LoginScreen';
 import DocumentList from './components/DocumentList';
 import DocumentEditor from './components/DocumentEditor';
-import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText, Upload } from 'lucide-react';
+import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText, Upload, Lock } from 'lucide-react';
 import {
   fetchUserData,
   saveUserDataDebounced,
@@ -34,6 +34,9 @@ import {
   SyncStatus,
   UserData
 } from './services/feishuService';
+import CreateColumnDialog from './components/CreateColumnDialog';
+import UnlockDialog from './components/UnlockDialog';
+import { generateSalt, generatePasswordHash, encryptContent, decryptContent } from './utils/crypto';
 
 // Gemini API Key storage key
 const GEMINI_API_KEY_STORAGE = 'zentask_gemini_api_key';
@@ -143,6 +146,13 @@ function App() {
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const POLL_INTERVAL_MS = 30000;  // Poll cloud every 30 seconds
+
+  // Encryption state
+  const [unlockedColumns, setUnlockedColumns] = useState<Map<Id, string>>(new Map()); // columnId -> password
+  const [createColumnDialogOpen, setCreateColumnDialogOpen] = useState(false);
+  const [createColumnType, setCreateColumnType] = useState<'task' | 'idea'>('task');
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
+  const [unlockingColumn, setUnlockingColumn] = useState<ColumnType | null>(null);
 
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
@@ -425,19 +435,51 @@ function App() {
 
   // --- Task Actions (with incremental sync) ---
 
-  const createColumn = async () => {
+  // Open dialog for creating column
+  const openCreateColumnDialog = (type: 'task' | 'idea') => {
+    setCreateColumnType(type);
+    setCreateColumnDialogOpen(true);
+  };
+
+  // Handle creating column from dialog
+  const handleCreateColumn = async (title: string, isEncrypted: boolean, password?: string) => {
     const columnToAdd: ColumnType = {
       id: generateId(),
-      title: `新分类 ${columns.length + 1}`,
+      title,
+      isEncrypted,
+      encryptionSalt: isEncrypted && password ? generateSalt() : undefined,
     };
-    setColumns([...columns, columnToAdd]);
+
+    // If encrypted, store the password hash in the salt field for verification
+    if (isEncrypted && password && columnToAdd.encryptionSalt) {
+      const hash = await generatePasswordHash(password, columnToAdd.encryptionSalt);
+      columnToAdd.encryptionSalt = `${columnToAdd.encryptionSalt}:${hash}`;
+      // Auto-unlock this column
+      setUnlockedColumns(prev => new Map(prev).set(columnToAdd.id, password));
+    }
+
+    if (createColumnType === 'task') {
+      setColumns([...columns, columnToAdd]);
+    } else {
+      setIdeaColumns([...ideaColumns, columnToAdd]);
+    }
+
+    setCreateColumnDialogOpen(false);
 
     // Sync to Feishu
     if (currentUser) {
       try {
         setSyncStatus('syncing');
-        const recordId = await createRecord(currentUser, 'columns', { ...columnToAdd, type: 'task', sortOrder: columns.length });
-        setColumns(prev => prev.map(col => col.id === columnToAdd.id ? { ...col, recordId } : col));
+        const recordId = await createRecord(currentUser, 'columns', {
+          ...columnToAdd,
+          type: createColumnType,
+          sortOrder: createColumnType === 'task' ? columns.length : ideaColumns.length
+        });
+        if (createColumnType === 'task') {
+          setColumns(prev => prev.map(col => col.id === columnToAdd.id ? { ...col, recordId } : col));
+        } else {
+          setIdeaColumns(prev => prev.map(col => col.id === columnToAdd.id ? { ...col, recordId } : col));
+        }
         setSyncStatus('synced');
       } catch (err) {
         console.error('Failed to sync column creation:', err);
@@ -445,6 +487,10 @@ function App() {
       }
     }
   };
+
+  const createColumn = () => openCreateColumnDialog('task');
+
+  const createIdeaColumn = () => openCreateColumnDialog('idea');
 
   const deleteColumn = async (id: Id) => {
     const column = columns.find(col => col.id === id);
@@ -557,27 +603,6 @@ function App() {
   };
 
   // --- Idea Actions (with incremental sync) ---
-
-  const createIdeaColumn = async () => {
-    const columnToAdd: ColumnType = {
-      id: generateId(),
-      title: `新主题 ${ideaColumns.length + 1}`,
-    };
-    setIdeaColumns([...ideaColumns, columnToAdd]);
-
-    // Sync to Feishu
-    if (currentUser) {
-      try {
-        setSyncStatus('syncing');
-        const recordId = await createRecord(currentUser, 'columns', { ...columnToAdd, type: 'idea', sortOrder: ideaColumns.length });
-        setIdeaColumns(prev => prev.map(col => col.id === columnToAdd.id ? { ...col, recordId } : col));
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error('Failed to sync idea column creation:', err);
-        setSyncStatus('error');
-      }
-    }
-  };
 
   const deleteIdeaColumn = async (id: Id) => {
     const column = ideaColumns.find(col => col.id === id);
@@ -1093,6 +1118,11 @@ function App() {
                     deleteTask={deleteTask}
                     updateTask={updateTask}
                     toggleComplete={toggleComplete}
+                    isLocked={col.isEncrypted && !unlockedColumns.has(col.id)}
+                    onUnlock={() => {
+                      setUnlockingColumn(col);
+                      setUnlockDialogOpen(true);
+                    }}
                   />
                 ))}
               </SortableContext>
@@ -1118,6 +1148,11 @@ function App() {
                     updateIdea={updateIdea}
                     optimizeIdea={optimizeIdea}
                     optimizingIds={optimizingIds}
+                    isLocked={col.isEncrypted && !unlockedColumns.has(col.id)}
+                    onUnlock={() => {
+                      setUnlockingColumn(col);
+                      setUnlockDialogOpen(true);
+                    }}
                   />
                 ))}
               </SortableContext>
@@ -1196,6 +1231,38 @@ function App() {
           )}
         </DndContext>
       </div>
+
+      {/* Create Column Dialog */}
+      <CreateColumnDialog
+        isOpen={createColumnDialogOpen}
+        onClose={() => setCreateColumnDialogOpen(false)}
+        onCreate={handleCreateColumn}
+        type={createColumnType}
+        defaultTitle={createColumnType === 'task' ? `新分类 ${columns.length + 1}` : `新主题 ${ideaColumns.length + 1}`}
+      />
+
+      {/* Unlock Dialog */}
+      <UnlockDialog
+        isOpen={unlockDialogOpen}
+        onClose={() => {
+          setUnlockDialogOpen(false);
+          setUnlockingColumn(null);
+        }}
+        onUnlock={async (password) => {
+          if (!unlockingColumn) return false;
+          // Verify password against stored hash
+          const saltAndHash = unlockingColumn.encryptionSalt?.split(':');
+          if (!saltAndHash || saltAndHash.length !== 2) return false;
+          const [salt, storedHash] = saltAndHash;
+          const computedHash = await generatePasswordHash(password, salt);
+          if (computedHash === storedHash) {
+            setUnlockedColumns(prev => new Map(prev).set(unlockingColumn.id, password));
+            return true;
+          }
+          return false;
+        }}
+        columnTitle={unlockingColumn?.title || ''}
+      />
     </div>
   );
 }
