@@ -70,6 +70,7 @@ const TABLE_IDS: Record<string, string> = {
     ideas: process.env.FEISHU_IDEAS_TABLE_ID!,
     columns: process.env.FEISHU_COLUMNS_TABLE_ID!,
     documents: process.env.FEISHU_DOCUMENTS_TABLE_ID!,
+    documentFolders: process.env.FEISHU_DOCUMENT_FOLDERS_TABLE_ID!,
 };
 
 // ============= CRUD Operations =============
@@ -118,12 +119,23 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
         fields = {
             ...fields,
             doc_id: data.id,
+            folder_id: data.folderId || '',
             title: data.title || '',
             content: data.content || '',
             created_at: data.createdAt || Date.now(),
             updated_at: data.updatedAt || Date.now(),
             sort_order: data.sortOrder || 0,
             sync_version: Date.now(),
+        };
+    } else if (table === 'documentFolders') {
+        fields = {
+            ...fields,
+            folder_id: data.id,
+            title: data.title,
+            sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
+            isEncrypted: data.isEncrypted || false,
+            encryptionSalt: data.encryptionSalt || '',
         };
     }
 
@@ -174,11 +186,20 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
         };
     } else if (table === 'documents') {
         fields = {
+            folder_id: data.folderId || '',
             title: data.title || '',
             content: data.content || '',
             updated_at: Date.now(),
             sort_order: data.sortOrder || 0,
             sync_version: Date.now(),
+        };
+    } else if (table === 'documentFolders') {
+        fields = {
+            title: data.title,
+            sort_order: data.sortOrder || 0,
+            sync_version: Date.now(),
+            isEncrypted: data.isEncrypted,
+            encryptionSalt: data.encryptionSalt,
         };
     }
 

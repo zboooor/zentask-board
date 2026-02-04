@@ -86,6 +86,7 @@ const TASKS_TABLE_ID = process.env.FEISHU_TASKS_TABLE_ID!;
 const IDEAS_TABLE_ID = process.env.FEISHU_IDEAS_TABLE_ID!;
 const COLUMNS_TABLE_ID = process.env.FEISHU_COLUMNS_TABLE_ID!;
 const DOCUMENTS_TABLE_ID = process.env.FEISHU_DOCUMENTS_TABLE_ID!;
+const DOCUMENT_FOLDERS_TABLE_ID = process.env.FEISHU_DOCUMENT_FOLDERS_TABLE_ID!;
 
 
 interface Column {
@@ -113,10 +114,19 @@ interface Idea {
 interface Document {
     id: string;
     recordId?: string;
+    folderId?: string;
     title: string;
     content: string;
     createdAt?: number;
     updatedAt?: number;
+}
+
+interface DocumentFolder {
+    id: string;
+    recordId?: string;
+    title: string;
+    isEncrypted?: boolean;
+    encryptionSalt?: string;
 }
 
 interface UserData {
@@ -125,6 +135,7 @@ interface UserData {
     ideaColumns: Column[];
     ideas: Idea[];
     documents: Document[];
+    documentFolders: DocumentFolder[];
 }
 
 /**
@@ -219,11 +230,12 @@ async function createRecords(tableId: string, records: any[]): Promise<void> {
  */
 async function handleGet(userId: string): Promise<UserData> {
     // Fetch all tables in parallel
-    const [columnsRecords, tasksRecords, ideasRecords, documentsRecords] = await Promise.all([
+    const [columnsRecords, tasksRecords, ideasRecords, documentsRecords, documentFoldersRecords] = await Promise.all([
         fetchTableRecords(COLUMNS_TABLE_ID, userId),
         fetchTableRecords(TASKS_TABLE_ID, userId),
         fetchTableRecords(IDEAS_TABLE_ID, userId),
         fetchTableRecords(DOCUMENTS_TABLE_ID, userId),
+        fetchTableRecords(DOCUMENT_FOLDERS_TABLE_ID, userId),
     ]);
 
     // Transform columns
@@ -273,13 +285,25 @@ async function handleGet(userId: string): Promise<UserData> {
         .map((record) => ({
             id: record.fields.doc_id,
             recordId: record.record_id,
+            folderId: record.fields.folder_id || undefined,
             title: record.fields.title || '',
             content: record.fields.content || '',
             createdAt: record.fields.created_at,
             updatedAt: record.fields.updated_at,
         }));
 
-    return { columns: taskColumns, tasks, ideaColumns, ideas, documents };
+    // Transform document folders
+    const documentFolders: DocumentFolder[] = documentFoldersRecords
+        .sort((a, b) => (a.fields.sort_order || 0) - (b.fields.sort_order || 0))
+        .map((record) => ({
+            id: record.fields.folder_id,
+            recordId: record.record_id,
+            title: record.fields.title || '',
+            isEncrypted: record.fields.isEncrypted || false,
+            encryptionSalt: record.fields.encryptionSalt || '',
+        }));
+
+    return { columns: taskColumns, tasks, ideaColumns, ideas, documents, documentFolders };
 }
 
 /**
@@ -292,17 +316,19 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
     const syncVersion = Date.now();
 
     // Step 1: Fetch old record IDs BEFORE creating new ones
-    const [oldColumns, oldTasks, oldIdeas, oldDocs] = await Promise.all([
+    const [oldColumns, oldTasks, oldIdeas, oldDocs, oldFolders] = await Promise.all([
         fetchTableRecords(COLUMNS_TABLE_ID, userId),
         fetchTableRecords(TASKS_TABLE_ID, userId),
         fetchTableRecords(IDEAS_TABLE_ID, userId),
         fetchTableRecords(DOCUMENTS_TABLE_ID, userId),
+        fetchTableRecords(DOCUMENT_FOLDERS_TABLE_ID, userId),
     ]);
 
     const oldColumnIds = oldColumns.map(r => r.record_id);
     const oldTaskIds = oldTasks.map(r => r.record_id);
     const oldIdeaIds = oldIdeas.map(r => r.record_id);
     const oldDocIds = oldDocs.map(r => r.record_id);
+    const oldFolderIds = oldFolders.map(r => r.record_id);
 
     // Step 2: Prepare NEW records with sync_version
     const columnRecords = [
@@ -356,10 +382,23 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
         fields: {
             doc_id: doc.id,
             user_id: userId,
+            folder_id: doc.folderId || '',
             title: doc.title,
             content: doc.content,
             created_at: doc.createdAt || Date.now(),
             updated_at: doc.updatedAt || Date.now(),
+            sort_order: index,
+            sync_version: syncVersion,
+        },
+    }));
+
+    const documentFolderRecords = (data.documentFolders || []).map((folder, index) => ({
+        fields: {
+            folder_id: folder.id,
+            user_id: userId,
+            title: folder.title,
+            isEncrypted: folder.isEncrypted || false,
+            encryptionSalt: folder.encryptionSalt || '',
             sort_order: index,
             sync_version: syncVersion,
         },
@@ -371,6 +410,7 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
         createRecords(TASKS_TABLE_ID, taskRecords),
         createRecords(IDEAS_TABLE_ID, ideaRecords),
         createRecords(DOCUMENTS_TABLE_ID, documentRecords),
+        createRecords(DOCUMENT_FOLDERS_TABLE_ID, documentFolderRecords),
     ]);
 
     // Step 4: Delete OLD records only after successful creation
@@ -380,6 +420,7 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
         deleteRecordsByIds(TASKS_TABLE_ID, oldTaskIds),
         deleteRecordsByIds(IDEAS_TABLE_ID, oldIdeaIds),
         deleteRecordsByIds(DOCUMENTS_TABLE_ID, oldDocIds),
+        deleteRecordsByIds(DOCUMENT_FOLDERS_TABLE_ID, oldFolderIds),
     ]);
 }
 

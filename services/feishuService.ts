@@ -3,7 +3,7 @@
  * Frontend service for communicating with the Feishu sync API
  */
 
-import { Column as ColumnType, Task, Idea, Document, Id } from '../types';
+import { Column as ColumnType, Task, Idea, Document, DocumentFolder, Id } from '../types';
 import { encryptContent, decryptContent, isEncryptedContent } from '../utils/crypto';
 
 export interface UserData {
@@ -12,6 +12,7 @@ export interface UserData {
     ideaColumns: ColumnType[];
     ideas: Idea[];
     documents: Document[];
+    documentFolders: DocumentFolder[];
 }
 
 // Password map type: columnId -> password
@@ -84,59 +85,100 @@ export function saveUserDataDebounced(
 /**
  * Encrypt user data before sync
  * Encrypts content of tasks/ideas that belong to encrypted columns
+ * SECURITY: Tasks/ideas in encrypted columns without available password will be excluded from sync
  */
 async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promise<UserData> {
-    // Create a set of encrypted column IDs
-    const encryptedColumnIds = new Set<Id>();
+    // Create a set of encrypted column IDs with passwords
+    const encryptedWithPassword = new Set<Id>();
     const columnPasswords = new Map<Id, string>();
+
+    // Track all encrypted column IDs (with or without password)
+    const allEncryptedColumnIds = new Set<Id>();
 
     // Collect encrypted columns (task columns)
     for (const col of data.columns) {
-        if (col.isEncrypted && passwords.has(col.id)) {
-            encryptedColumnIds.add(col.id);
-            columnPasswords.set(col.id, passwords.get(col.id)!);
+        if (col.isEncrypted) {
+            allEncryptedColumnIds.add(col.id);
+            if (passwords.has(col.id)) {
+                encryptedWithPassword.add(col.id);
+                columnPasswords.set(col.id, passwords.get(col.id)!);
+            }
         }
     }
 
     // Collect encrypted columns (idea columns)
     for (const col of data.ideaColumns) {
-        if (col.isEncrypted && passwords.has(col.id)) {
-            encryptedColumnIds.add(col.id);
-            columnPasswords.set(col.id, passwords.get(col.id)!);
+        if (col.isEncrypted) {
+            allEncryptedColumnIds.add(col.id);
+            if (passwords.has(col.id)) {
+                encryptedWithPassword.add(col.id);
+                columnPasswords.set(col.id, passwords.get(col.id)!);
+            }
         }
     }
 
-    // Encrypt tasks
+    // Encrypt tasks - SECURITY: skip unencrypted content in encrypted columns without password
     const encryptedTasks = await Promise.all(
-        data.tasks.map(async (task) => {
-            if (encryptedColumnIds.has(task.columnId) && !isEncryptedContent(task.content)) {
-                const password = columnPasswords.get(task.columnId)!;
-                const encryptedContent = await encryptContent(task.content, password);
-                return { ...task, content: encryptedContent };
-            }
-            return task;
-        })
+        data.tasks
+            .filter(task => {
+                // If task is in an encrypted column without password and content is NOT already encrypted, skip it
+                if (allEncryptedColumnIds.has(task.columnId) &&
+                    !encryptedWithPassword.has(task.columnId) &&
+                    !isEncryptedContent(task.content)) {
+                    console.warn(`Skipping task sync: encrypted column ${task.columnId} missing password`);
+                    return false;
+                }
+                return true;
+            })
+            .map(async (task) => {
+                if (encryptedWithPassword.has(task.columnId) && !isEncryptedContent(task.content)) {
+                    const password = columnPasswords.get(task.columnId)!;
+                    const encryptedContent = await encryptContent(task.content, password);
+                    return { ...task, content: encryptedContent };
+                }
+                return task;
+            })
     );
 
-    // Encrypt ideas
+    // Encrypt ideas - SECURITY: skip unencrypted content in encrypted columns without password
     const encryptedIdeas = await Promise.all(
-        data.ideas.map(async (idea) => {
-            if (encryptedColumnIds.has(idea.columnId) && !isEncryptedContent(idea.content)) {
-                const password = columnPasswords.get(idea.columnId)!;
-                const encryptedContent = await encryptContent(idea.content, password);
-                return { ...idea, content: encryptedContent };
-            }
-            return idea;
-        })
+        data.ideas
+            .filter(idea => {
+                if (allEncryptedColumnIds.has(idea.columnId) &&
+                    !encryptedWithPassword.has(idea.columnId) &&
+                    !isEncryptedContent(idea.content)) {
+                    console.warn(`Skipping idea sync: encrypted column ${idea.columnId} missing password`);
+                    return false;
+                }
+                return true;
+            })
+            .map(async (idea) => {
+                if (encryptedWithPassword.has(idea.columnId) && !isEncryptedContent(idea.content)) {
+                    const password = columnPasswords.get(idea.columnId)!;
+                    const encryptedContent = await encryptContent(idea.content, password);
+                    return { ...idea, content: encryptedContent };
+                }
+                return idea;
+            })
     );
 
     // Encrypt column titles for encrypted columns
+    // SECURITY: Keep already-encrypted titles, but skip decrypted titles without password
     const encryptedColumns = await Promise.all(
         data.columns.map(async (col) => {
-            if (col.isEncrypted && passwords.has(col.id) && !isEncryptedContent(col.title)) {
-                const password = passwords.get(col.id)!;
-                const encryptedTitle = await encryptContent(col.title, password);
-                return { ...col, title: encryptedTitle };
+            if (col.isEncrypted) {
+                if (passwords.has(col.id)) {
+                    // Have password - encrypt if needed
+                    if (!isEncryptedContent(col.title)) {
+                        const password = passwords.get(col.id)!;
+                        const encryptedTitle = await encryptContent(col.title, password);
+                        return { ...col, title: encryptedTitle };
+                    }
+                } else if (!isEncryptedContent(col.title)) {
+                    // No password and title is decrypted - keep as "[加密主题]" placeholder
+                    console.warn(`Column ${col.id} title is decrypted but no password available`);
+                    return { ...col, title: '[加密主题]' };
+                }
             }
             return col;
         })
@@ -144,10 +186,17 @@ async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promi
 
     const encryptedIdeaColumns = await Promise.all(
         data.ideaColumns.map(async (col) => {
-            if (col.isEncrypted && passwords.has(col.id) && !isEncryptedContent(col.title)) {
-                const password = passwords.get(col.id)!;
-                const encryptedTitle = await encryptContent(col.title, password);
-                return { ...col, title: encryptedTitle };
+            if (col.isEncrypted) {
+                if (passwords.has(col.id)) {
+                    if (!isEncryptedContent(col.title)) {
+                        const password = passwords.get(col.id)!;
+                        const encryptedTitle = await encryptContent(col.title, password);
+                        return { ...col, title: encryptedTitle };
+                    }
+                } else if (!isEncryptedContent(col.title)) {
+                    console.warn(`Idea column ${col.id} title is decrypted but no password available`);
+                    return { ...col, title: '[加密主题]' };
+                }
             }
             return col;
         })
@@ -158,7 +207,8 @@ async function encryptDataForSync(data: UserData, passwords: PasswordMap): Promi
         tasks: encryptedTasks,
         ideaColumns: encryptedIdeaColumns,
         ideas: encryptedIdeas,
-        documents: data.documents // Documents have their own encryption
+        documents: data.documents, // Documents have their own encryption
+        documentFolders: data.documentFolders
     };
 }
 
@@ -250,7 +300,8 @@ export async function decryptDataAfterFetch(data: UserData, passwords: PasswordM
         tasks: decryptedTasks,
         ideaColumns: decryptedIdeaColumns,
         ideas: decryptedIdeas,
-        documents: data.documents
+        documents: data.documents,
+        documentFolders: data.documentFolders
     };
 }
 

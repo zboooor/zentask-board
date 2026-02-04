@@ -14,7 +14,7 @@ import {
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
 import { createPortal } from 'react-dom';
 import { GoogleGenAI } from "@google/genai";
-import { Column as ColumnType, Task, Idea, Id, Document } from './types';
+import { Column as ColumnType, Task, Idea, Id, Document, DocumentFolder } from './types';
 import Column from './components/Column';
 import TaskCard from './components/TaskCard';
 import IdeaColumn from './components/IdeaColumn';
@@ -62,6 +62,8 @@ const defaultTasks: Task[] = [];
 const defaultIdeas: Idea[] = [];
 
 const defaultDocuments: Document[] = [];
+
+const defaultDocumentFolders: DocumentFolder[] = [];
 
 type ViewMode = 'tasks' | 'ideas' | 'docs';
 const STORAGE_PREFIX = 'zentask_v1_';
@@ -125,6 +127,7 @@ function App() {
   const [ideaColumns, setIdeaColumns] = useState<ColumnType[]>(defaultIdeaCols);
   const [ideas, setIdeas] = useState<Idea[]>(defaultIdeas);
   const [documents, setDocuments] = useState<Document[]>(defaultDocuments);
+  const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>(defaultDocumentFolders);
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
 
   const [activeColumn, setActiveColumn] = useState<ColumnType | null>(null);
@@ -191,6 +194,7 @@ function App() {
         setIdeaColumns(parsed.ideaColumns || defaultIdeaCols);
         setIdeas(parsed.ideas || defaultIdeas);
         setDocuments(parsed.documents || defaultDocuments);
+        setDocumentFolders(parsed.documentFolders || defaultDocumentFolders);
       } catch (e) {
         console.error("Failed to load user data from localStorage", e);
       }
@@ -200,6 +204,7 @@ function App() {
       setIdeaColumns(defaultIdeaCols);
       setIdeas(defaultIdeas);
       setDocuments(defaultDocuments);
+      setDocumentFolders(defaultDocumentFolders);
     }
   }, []);
 
@@ -226,12 +231,13 @@ function App() {
       // Try to fetch from Feishu cloud
       fetchUserData(currentUser)
         .then((data) => {
-          if (data && (data.columns.length > 0 || data.tasks.length > 0 || data.ideas.length > 0 || (data.documents && data.documents.length > 0))) {
+          if (data && (data.columns.length > 0 || data.tasks.length > 0 || data.ideas.length > 0 || (data.documents && data.documents.length > 0) || (data.documentFolders && data.documentFolders.length > 0))) {
             setColumns(data.columns.length > 0 ? data.columns : defaultCols);
             setTasks(data.tasks);
             setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : defaultIdeaCols);
             setIdeas(data.ideas);
             setDocuments(data.documents || defaultDocuments);
+            setDocumentFolders(data.documentFolders || defaultDocumentFolders);
             // Also update localStorage as cache
             localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(data));
           } else {
@@ -277,14 +283,15 @@ function App() {
         tasks,
         ideaColumns,
         ideas,
-        documents
+        documents,
+        documentFolders
       };
 
       // Save to localStorage as cache only
       // Cloud sync is now handled incrementally by each CRUD operation
       localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(dataToSave));
     }
-  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, isInitialLoad]);
+  }, [currentUser, columns, tasks, ideaColumns, ideas, documents, documentFolders, isInitialLoad]);
 
   // Manual refresh handler (pull from cloud)
   const handleRefresh = useCallback(async () => {
@@ -299,7 +306,9 @@ function App() {
       if (data) {
         // Only overwrite if cloud has actual data (at least one column or task)
         const hasCloudData = data.columns.length > 0 || data.tasks.length > 0 ||
-          data.ideaColumns.length > 0 || data.ideas.length > 0;
+          data.ideaColumns.length > 0 || data.ideas.length > 0 ||
+          (data.documents && data.documents.length > 0) ||
+          (data.documentFolders && data.documentFolders.length > 0);
 
         if (hasCloudData) {
           // Cloud has data, use it (don't trigger re-save)
@@ -307,6 +316,8 @@ function App() {
           setTasks(data.tasks);
           setIdeaColumns(data.ideaColumns.length > 0 ? data.ideaColumns : defaultIdeaCols);
           setIdeas(data.ideas);
+          setDocuments(data.documents || defaultDocuments);
+          setDocumentFolders(data.documentFolders || defaultDocumentFolders);
           localStorage.setItem(`${STORAGE_PREFIX}data_${currentUser}`, JSON.stringify(data));
           setSyncStatus('synced');
         } else {
@@ -338,7 +349,8 @@ function App() {
         tasks,
         ideaColumns,
         ideas,
-        documents
+        documents,
+        documentFolders
       };
       await saveUserDataImmediate(currentUser, dataToSave, unlockedColumns);
       setSyncStatus('synced');
@@ -925,7 +937,8 @@ function App() {
         tasks,
         ideaColumns,
         ideas,
-        documents
+        documents,
+        documentFolders
       };
 
       setSyncStatus('syncing');
