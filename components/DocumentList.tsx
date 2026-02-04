@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Document, DocumentFolder, Id } from '../types';
 import { FileText, Trash2, Clock, Folder, FolderLock, Lock, ChevronRight, ArrowLeft } from 'lucide-react';
 
@@ -6,6 +6,8 @@ interface DocumentListProps {
     documents: Document[];
     documentFolders: DocumentFolder[];
     unlockedFolders: Map<Id, string>; // folderId -> password
+    currentFolderId: Id | null;
+    onFolderChange: (folderId: Id | null) => void;
     onSelectDocument: (doc: Document) => void;
     onDeleteDocument: (id: Id) => void;
     onDeleteFolder: (id: Id) => void;
@@ -16,12 +18,13 @@ const DocumentList: React.FC<DocumentListProps> = ({
     documents,
     documentFolders,
     unlockedFolders,
+    currentFolderId,
+    onFolderChange,
     onSelectDocument,
     onDeleteDocument,
     onDeleteFolder,
     onUnlockFolder,
 }) => {
-    const [currentFolderId, setCurrentFolderId] = useState<Id | null>(null);
 
     const formatDate = (timestamp?: number) => {
         if (!timestamp) return '';
@@ -54,7 +57,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
         if (folder.isEncrypted && !unlockedFolders.has(folder.id)) {
             onUnlockFolder(folder);
         } else {
-            setCurrentFolderId(folder.id);
+            onFolderChange(folder.id);
         }
     };
 
@@ -65,7 +68,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                 <div className="flex items-center gap-3">
                     {currentFolderId && (
                         <button
-                            onClick={() => setCurrentFolderId(null)}
+                            onClick={() => onFolderChange(null)}
                             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                         >
                             <ArrowLeft size={20} className="text-slate-600" />

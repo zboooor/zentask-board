@@ -159,6 +159,7 @@ function App() {
   const [unlockingColumn, setUnlockingColumn] = useState<ColumnType | null>(null);
   const [showDocCreateMenu, setShowDocCreateMenu] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
+  const [currentDocFolderId, setCurrentDocFolderId] = useState<Id | null>(null);
 
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
@@ -1222,7 +1223,7 @@ function App() {
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50">
                     <button
                       onClick={() => {
-                        createDocument();
+                        createDocument(currentDocFolderId || undefined);
                         setShowDocCreateMenu(false);
                       }}
                       className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700"
@@ -1358,6 +1359,8 @@ function App() {
                   documents={documents}
                   documentFolders={documentFolders}
                   unlockedFolders={unlockedFolders}
+                  currentFolderId={currentDocFolderId}
+                  onFolderChange={setCurrentDocFolderId}
                   onSelectDocument={setEditingDocument}
                   onDeleteDocument={deleteDocument}
                   onDeleteFolder={deleteDocumentFolder}
