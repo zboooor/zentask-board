@@ -251,8 +251,8 @@ async function handleGet(userId: string): Promise<UserData> {
                 id: record.fields.column_id,
                 recordId: record.record_id,  // Add Feishu record ID
                 title: record.fields.title,
-                isEncrypted: record.fields.is_encrypted || false,
-                encryptionSalt: record.fields.encryption_salt || undefined,
+                isEncrypted: record.fields.isEncrypted || false,
+                encryptionSalt: record.fields.encryptionSalt || undefined,
             };
             if (record.fields.type === 'idea') {
                 ideaColumns.push(col);
