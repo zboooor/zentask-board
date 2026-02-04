@@ -121,6 +121,8 @@ interface Document {
     content: string;
     createdAt?: number;
     updatedAt?: number;
+    isEncrypted?: boolean;
+    encryptionSalt?: string;
 }
 
 interface DocumentFolder {
@@ -353,6 +355,8 @@ async function handleGet(userId: string): Promise<UserData> {
             content: record.fields.content || '',
             createdAt: record.fields.created_at,
             updatedAt: record.fields.updated_at,
+            isEncrypted: record.fields.isEncrypted || false,
+            encryptionSalt: record.fields.encryptionSalt || '',
         }));
 
     // Transform document folders
@@ -456,6 +460,8 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
             updated_at: doc.updatedAt || Date.now(),
             sort_order: index,
             sync_version: syncVersion,
+            isEncrypted: doc.isEncrypted || false,
+            encryptionSalt: doc.encryptionSalt || '',
         },
     }));
 
