@@ -6,24 +6,28 @@ interface DocumentListProps {
     documents: Document[];
     documentFolders: DocumentFolder[];
     unlockedFolders: Map<Id, string>; // folderId -> password
+    unlockedDocs: Map<Id, string>; // docId -> password
     currentFolderId: Id | null;
     onFolderChange: (folderId: Id | null) => void;
     onSelectDocument: (doc: Document) => void;
     onDeleteDocument: (id: Id) => void;
     onDeleteFolder: (id: Id) => void;
     onUnlockFolder: (folder: DocumentFolder) => void;
+    onUnlockDocument: (doc: Document) => void;
 }
 
 const DocumentList: React.FC<DocumentListProps> = ({
     documents,
     documentFolders,
     unlockedFolders,
+    unlockedDocs,
     currentFolderId,
     onFolderChange,
     onSelectDocument,
     onDeleteDocument,
     onDeleteFolder,
     onUnlockFolder,
+    onUnlockDocument,
 }) => {
 
     const formatDate = (timestamp?: number) => {
@@ -58,6 +62,14 @@ const DocumentList: React.FC<DocumentListProps> = ({
             onUnlockFolder(folder);
         } else {
             onFolderChange(folder.id);
+        }
+    };
+
+    const handleDocumentClick = (doc: Document) => {
+        if (doc.isEncrypted && !unlockedDocs.has(doc.id)) {
+            onUnlockDocument(doc);
+        } else {
+            onSelectDocument(doc);
         }
     };
 
@@ -147,37 +159,53 @@ const DocumentList: React.FC<DocumentListProps> = ({
                             {currentDocuments.length > 0 && !currentFolderId && rootFolders.length > 0 && (
                                 <h3 className="text-sm font-medium text-slate-500 mb-3">文档</h3>
                             )}
-                            {currentDocuments.map((doc) => (
-                                <div
-                                    key={doc.id}
-                                    className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md transition-all cursor-pointer group"
-                                    onClick={() => onSelectDocument(doc)}
-                                >
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="font-semibold text-slate-800 truncate group-hover:text-emerald-600 transition-colors">
-                                                {doc.title || '无标题'}
-                                            </h3>
-                                            <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-                                                {doc.content || '空文档'}
-                                            </p>
-                                            <div className="flex items-center gap-1 text-xs text-slate-400 mt-2">
-                                                <Clock size={12} />
-                                                {formatDate(doc.updatedAt || doc.createdAt)}
+                            {currentDocuments.map((doc) => {
+                                const isDocLocked = doc.isEncrypted && !unlockedDocs.has(doc.id);
+                                return (
+                                    <div
+                                        key={doc.id}
+                                        className={`bg-white rounded-xl p-4 shadow-sm border transition-all cursor-pointer group ${doc.isEncrypted
+                                            ? 'border-orange-100 hover:border-orange-300 hover:shadow-md'
+                                            : 'border-slate-100 hover:border-emerald-200 hover:shadow-md'
+                                            }`}
+                                        onClick={() => handleDocumentClick(doc)}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                                                {doc.isEncrypted && (
+                                                    <div className={`p-1.5 rounded-lg flex-shrink-0 ${isDocLocked ? 'bg-orange-100' : 'bg-green-100'}`}>
+                                                        <Lock size={14} className={isDocLocked ? 'text-orange-500' : 'text-green-600'} />
+                                                    </div>
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className={`font-semibold truncate transition-colors ${doc.isEncrypted
+                                                        ? 'text-slate-800 group-hover:text-orange-600'
+                                                        : 'text-slate-800 group-hover:text-emerald-600'
+                                                        }`}>
+                                                        {isDocLocked ? '🔒 ' + (doc.title || '加密文档') : (doc.title || '无标题')}
+                                                    </h3>
+                                                    <p className="text-sm text-slate-500 mt-1 line-clamp-2">
+                                                        {isDocLocked ? '点击解锁查看内容' : (doc.content || '空文档')}
+                                                    </p>
+                                                    <div className="flex items-center gap-1 text-xs text-slate-400 mt-2">
+                                                        <Clock size={12} />
+                                                        {formatDate(doc.updatedAt || doc.createdAt)}
+                                                    </div>
+                                                </div>
                                             </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDeleteDocument(doc.id);
+                                                }}
+                                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onDeleteDocument(doc.id);
-                                            }}
-                                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : null}
                 </>

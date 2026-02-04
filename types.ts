@@ -40,4 +40,6 @@ export interface Document {
   content: string;
   createdAt?: number;
   updatedAt?: number;
+  isEncrypted?: boolean;      // Whether this document is encrypted
+  encryptionSalt?: string;    // Salt for password verification (format: salt:hash)
 }

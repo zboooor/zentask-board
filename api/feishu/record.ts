@@ -126,6 +126,8 @@ async function createRecord(table: string, userId: string, data: any): Promise<s
             updated_at: data.updatedAt || Date.now(),
             sort_order: data.sortOrder || 0,
             sync_version: Date.now(),
+            isEncrypted: data.isEncrypted || false,
+            encryptionSalt: data.encryptionSalt || '',
         };
     } else if (table === 'documentFolders') {
         fields = {
@@ -192,6 +194,8 @@ async function updateRecord(table: string, recordId: string, data: any): Promise
             updated_at: Date.now(),
             sort_order: data.sortOrder || 0,
             sync_version: Date.now(),
+            isEncrypted: data.isEncrypted,
+            encryptionSalt: data.encryptionSalt,
         };
     } else if (table === 'documentFolders') {
         fields = {

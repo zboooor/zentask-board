@@ -37,6 +37,7 @@ import {
 import CreateColumnDialog from './components/CreateColumnDialog';
 import UnlockDialog from './components/UnlockDialog';
 import CreateFolderDialog from './components/CreateFolderDialog';
+import CreateEncryptedDocDialog from './components/CreateEncryptedDocDialog';
 import { generateSalt, generatePasswordHash, encryptContent, decryptContent, isEncryptedContent } from './utils/crypto';
 
 // Gemini API Key storage key
@@ -159,9 +160,12 @@ function App() {
   const [unlockingColumn, setUnlockingColumn] = useState<ColumnType | null>(null);
   const [showDocCreateMenu, setShowDocCreateMenu] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
+  const [showEncryptedDocDialog, setShowEncryptedDocDialog] = useState(false);
   const [currentDocFolderId, setCurrentDocFolderId] = useState<Id | null>(null);
   const [unlockingFolder, setUnlockingFolder] = useState<DocumentFolder | null>(null);
   const [unlockedFolders, setUnlockedFolders] = useState<Map<Id, string>>(new Map()); // folderId -> password
+  const [unlockingDocument, setUnlockingDocument] = useState<Document | null>(null);
+  const [unlockedDocs, setUnlockedDocs] = useState<Map<Id, string>>(new Map()); // docId -> password
 
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
@@ -853,6 +857,55 @@ function App() {
     }
   };
 
+  const createEncryptedDocument = async (title: string, password: string) => {
+    const now = Date.now();
+
+    // Generate salt and hash for password storage
+    const salt = await generateSalt();
+    const hash = await generatePasswordHash(password, salt);
+    const encryptionSalt = `${salt}:${hash}`;
+
+    const newDoc: Document = {
+      id: generateId(),
+      title,
+      content: '',
+      createdAt: now,
+      updatedAt: now,
+      isEncrypted: true,
+      encryptionSalt,
+    };
+
+    setDocuments([...documents, newDoc]);
+    // Store password for this document so user can edit immediately
+    setUnlockedDocs(prev => new Map(prev).set(newDoc.id, password));
+    setEditingDocument(newDoc);
+
+    // Sync to Feishu with encrypted content
+    if (currentUser) {
+      try {
+        setSyncStatus('syncing');
+
+        // Encrypt title and content before sync
+        const encryptedTitle = await encryptContent(title, password);
+        const encryptedContent = await encryptContent('', password);
+
+        const syncDoc = {
+          ...newDoc,
+          title: encryptedTitle,
+          content: encryptedContent,
+          sortOrder: documents.length,
+        };
+
+        const recordId = await createRecord(currentUser, 'documents', syncDoc);
+        setDocuments(prev => prev.map(d => d.id === newDoc.id ? { ...d, recordId } : d));
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Failed to sync encrypted document creation:', err);
+        setSyncStatus('error');
+      }
+    }
+  };
+
   const deleteDocument = async (id: Id) => {
     const doc = documents.find(d => d.id === id);
     setDocuments(documents.filter((d) => d.id !== id));
@@ -887,13 +940,22 @@ function App() {
     // Sync to Feishu with debounce
     const doc = documents.find(d => d.id === id);
     if (currentUser && doc?.recordId) {
-      // Check if document is in an encrypted folder
       let syncData: { title: string; content: string; updatedAt: number } = { title, content, updatedAt };
-      if (doc.folderId) {
+
+      // Check if document itself is encrypted
+      if (doc.isEncrypted) {
+        const password = unlockedDocs.get(doc.id);
+        if (password) {
+          const encryptedTitle = await encryptContent(title, password);
+          const encryptedContent = await encryptContent(content, password);
+          syncData = { title: encryptedTitle, content: encryptedContent, updatedAt };
+        }
+      }
+      // Check if document is in an encrypted folder
+      else if (doc.folderId) {
         const folder = documentFolders.find(f => f.id === doc.folderId);
         const password = unlockedFolders.get(doc.folderId);
         if (folder?.isEncrypted && password) {
-          // Encrypt title and content before sync
           const encryptedTitle = await encryptContent(title, password);
           const encryptedContent = await encryptContent(content, password);
           syncData = { title: encryptedTitle, content: encryptedContent, updatedAt };
@@ -901,7 +963,7 @@ function App() {
       }
       debouncedSync(() => updateRecord('documents', doc.recordId!, syncData));
     }
-  }, [documents, documentFolders, unlockedFolders, editingDocument, currentUser, debouncedSync]);
+  }, [documents, documentFolders, unlockedFolders, unlockedDocs, editingDocument, currentUser, debouncedSync]);
 
   // --- Document Folder Functions ---
 
@@ -1249,13 +1311,13 @@ function App() {
                     </button>
                     <button
                       onClick={() => {
-                        setShowFolderDialog(true);
+                        setShowEncryptedDocDialog(true);
                         setShowDocCreateMenu(false);
                       }}
                       className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700"
                     >
-                      <Folder size={16} className="text-cyan-600" />
-                      新建文件夹
+                      <Lock size={16} className="text-orange-500" />
+                      新建加密文档
                     </button>
                   </div>
                 </>
@@ -1375,12 +1437,14 @@ function App() {
                   documents={documents}
                   documentFolders={documentFolders}
                   unlockedFolders={unlockedFolders}
+                  unlockedDocs={unlockedDocs}
                   currentFolderId={currentDocFolderId}
                   onFolderChange={setCurrentDocFolderId}
                   onSelectDocument={setEditingDocument}
                   onDeleteDocument={deleteDocument}
                   onDeleteFolder={deleteDocumentFolder}
                   onUnlockFolder={unlockDocumentFolder}
+                  onUnlockDocument={setUnlockingDocument}
                 />
               )}
             </div>
@@ -1544,6 +1608,38 @@ function App() {
           return false;
         }}
         columnTitle={unlockingFolder?.title || ''}
+      />
+
+      {/* Create Encrypted Document Dialog */}
+      <CreateEncryptedDocDialog
+        isOpen={showEncryptedDocDialog}
+        onClose={() => setShowEncryptedDocDialog(false)}
+        onCreate={(title, password) => {
+          createEncryptedDocument(title, password);
+          setShowEncryptedDocDialog(false);
+        }}
+      />
+
+      {/* Document Unlock Dialog */}
+      <UnlockDialog
+        isOpen={!!unlockingDocument}
+        onClose={() => setUnlockingDocument(null)}
+        onUnlock={async (password) => {
+          if (!unlockingDocument) return false;
+          // Verify password against stored hash
+          const saltAndHash = unlockingDocument.encryptionSalt?.split(':');
+          if (!saltAndHash || saltAndHash.length !== 2) return false;
+          const [salt, storedHash] = saltAndHash;
+          const computedHash = await generatePasswordHash(password, salt);
+          if (computedHash === storedHash) {
+            setUnlockedDocs(prev => new Map(prev).set(unlockingDocument.id, password));
+            // Open the document for editing
+            setEditingDocument(unlockingDocument);
+            return true;
+          }
+          return false;
+        }}
+        columnTitle={unlockingDocument?.title || ''}
       />
     </div>
   );
