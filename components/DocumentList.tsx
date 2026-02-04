@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Document, DocumentFolder, Id } from '../types';
 import { Plus, FileText, Trash2, Clock, Folder, FolderLock, Lock, ChevronRight, ArrowLeft } from 'lucide-react';
+import CreateFolderDialog from './CreateFolderDialog';
 
 interface DocumentListProps {
     documents: Document[];
@@ -9,7 +10,7 @@ interface DocumentListProps {
     onSelectDocument: (doc: Document) => void;
     onCreateDocument: (folderId?: Id) => void;
     onDeleteDocument: (id: Id) => void;
-    onCreateFolder: (isEncrypted: boolean) => void;
+    onCreateFolder: (title: string, isEncrypted: boolean, password?: string) => void;
     onDeleteFolder: (id: Id) => void;
     onUnlockFolder: (folder: DocumentFolder) => void;
 }
@@ -27,6 +28,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
 }) => {
     const [currentFolderId, setCurrentFolderId] = useState<Id | null>(null);
     const [showCreateMenu, setShowCreateMenu] = useState(false);
+    const [showFolderDialog, setShowFolderDialog] = useState(false);
 
     const formatDate = (timestamp?: number) => {
         if (!timestamp) return '';
@@ -107,23 +109,13 @@ const DocumentList: React.FC<DocumentListProps> = ({
                                 <>
                                     <button
                                         onClick={() => {
-                                            onCreateFolder(false);
+                                            setShowFolderDialog(true);
                                             setShowCreateMenu(false);
                                         }}
                                         className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2"
                                     >
-                                        <Folder size={16} className="text-blue-600" />
+                                        <Folder size={16} className="text-cyan-600" />
                                         新建文件夹
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            onCreateFolder(true);
-                                            setShowCreateMenu(false);
-                                        }}
-                                        className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2"
-                                    >
-                                        <FolderLock size={16} className="text-amber-600" />
-                                        新建加密文件夹
                                     </button>
                                 </>
                             )}
@@ -239,6 +231,16 @@ const DocumentList: React.FC<DocumentListProps> = ({
                     onClick={() => setShowCreateMenu(false)}
                 />
             )}
+
+            {/* Create Folder Dialog */}
+            <CreateFolderDialog
+                isOpen={showFolderDialog}
+                onClose={() => setShowFolderDialog(false)}
+                onCreate={(title, isEncrypted, password) => {
+                    onCreateFolder(title, isEncrypted, password);
+                    setShowFolderDialog(false);
+                }}
+            />
         </div>
     );
 };

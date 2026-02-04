@@ -876,22 +876,14 @@ function App() {
 
   // --- Document Folder Functions ---
 
-  const createDocumentFolder = async (isEncrypted: boolean) => {
-    const title = prompt(isEncrypted ? '请输入加密文件夹名称：' : '请输入文件夹名称：');
-    if (!title?.trim()) return;
-
-    let password: string | undefined;
+  const createDocumentFolder = async (title: string, isEncrypted: boolean, password?: string) => {
     let encryptionSalt: string | undefined;
 
-    if (isEncrypted) {
-      password = prompt('请输入加密密码（请牢记，无法找回）：');
-      if (!password) return;
-      const confirmPassword = prompt('请再次输入密码确认：');
-      if (password !== confirmPassword) {
-        alert('两次密码不一致');
-        return;
-      }
-      encryptionSalt = await generateSalt();
+    if (isEncrypted && password) {
+      // Generate salt and hash for password storage
+      const salt = await generateSalt();
+      const hash = await generatePasswordHash(password, salt);
+      encryptionSalt = `${salt}:${hash}`;
     }
 
     const newFolder: DocumentFolder = {
