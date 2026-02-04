@@ -634,7 +634,19 @@ function App() {
     if (currentUser && task?.recordId) {
       try {
         setSyncStatus('syncing');
-        await updateRecord('tasks', task.recordId, { ...task, completed: newCompleted });
+
+        // Check if task is in an encrypted column - need to re-encrypt content
+        const column = columns.find(c => c.id === task.columnId);
+        const password = unlockedColumns.get(task.columnId);
+        let syncData: { content: string; completed: boolean } = { content: task.content, completed: newCompleted };
+
+        if (column?.isEncrypted && password) {
+          // Re-encrypt the content before syncing
+          const encryptedContent = await encryptContent(task.content, password);
+          syncData = { content: encryptedContent, completed: newCompleted };
+        }
+
+        await updateRecord('tasks', task.recordId, syncData);
         setSyncStatus('synced');
       } catch (err) {
         console.error('Failed to sync task toggle:', err);
