@@ -344,6 +344,8 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
                 type: 'task',
                 sort_order: index,
                 sync_version: syncVersion,
+                isEncrypted: col.isEncrypted || false,
+                encryptionSalt: col.encryptionSalt || '',
             },
         })),
         ...data.ideaColumns.map((col, index) => ({
@@ -354,6 +356,8 @@ async function handlePost(userId: string, data: UserData): Promise<void> {
                 type: 'idea',
                 sort_order: index,
                 sync_version: syncVersion,
+                isEncrypted: col.isEncrypted || false,
+                encryptionSalt: col.encryptionSalt || '',
             },
         })),
     ];
