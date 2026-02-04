@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
 import { Document, DocumentFolder, Id } from '../types';
-import { Plus, FileText, Trash2, Clock, Folder, FolderLock, Lock, ChevronRight, ArrowLeft } from 'lucide-react';
-import CreateFolderDialog from './CreateFolderDialog';
+import { FileText, Trash2, Clock, Folder, FolderLock, Lock, ChevronRight, ArrowLeft } from 'lucide-react';
 
 interface DocumentListProps {
     documents: Document[];
     documentFolders: DocumentFolder[];
     unlockedFolders: Map<Id, string>; // folderId -> password
     onSelectDocument: (doc: Document) => void;
-    onCreateDocument: (folderId?: Id) => void;
     onDeleteDocument: (id: Id) => void;
-    onCreateFolder: (title: string, isEncrypted: boolean, password?: string) => void;
     onDeleteFolder: (id: Id) => void;
     onUnlockFolder: (folder: DocumentFolder) => void;
 }
@@ -20,15 +17,11 @@ const DocumentList: React.FC<DocumentListProps> = ({
     documentFolders,
     unlockedFolders,
     onSelectDocument,
-    onCreateDocument,
     onDeleteDocument,
-    onCreateFolder,
     onDeleteFolder,
     onUnlockFolder,
 }) => {
     const [currentFolderId, setCurrentFolderId] = useState<Id | null>(null);
-    const [showCreateMenu, setShowCreateMenu] = useState(false);
-    const [showFolderDialog, setShowFolderDialog] = useState(false);
 
     const formatDate = (timestamp?: number) => {
         if (!timestamp) return '';
@@ -84,43 +77,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
                     <h2 className="text-xl font-bold text-slate-800">
                         {currentFolder ? currentFolder.title : '我的文档'}
                     </h2>
-                </div>
-                <div className="relative">
-                    <button
-                        onClick={() => setShowCreateMenu(!showCreateMenu)}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-emerald-100"
-                    >
-                        <Plus size={18} />
-                        新建
-                    </button>
-                    {showCreateMenu && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-10">
-                            <button
-                                onClick={() => {
-                                    onCreateDocument(currentFolderId || undefined);
-                                    setShowCreateMenu(false);
-                                }}
-                                className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2"
-                            >
-                                <FileText size={16} className="text-emerald-600" />
-                                新建文档
-                            </button>
-                            {!currentFolderId && (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            setShowFolderDialog(true);
-                                            setShowCreateMenu(false);
-                                        }}
-                                        className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2"
-                                    >
-                                        <Folder size={16} className="text-cyan-600" />
-                                        新建文件夹
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -223,24 +179,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
                     ) : null}
                 </>
             )}
-
-            {/* Click outside to close menu */}
-            {showCreateMenu && (
-                <div
-                    className="fixed inset-0 z-0"
-                    onClick={() => setShowCreateMenu(false)}
-                />
-            )}
-
-            {/* Create Folder Dialog */}
-            <CreateFolderDialog
-                isOpen={showFolderDialog}
-                onClose={() => setShowFolderDialog(false)}
-                onCreate={(title, isEncrypted, password) => {
-                    onCreateFolder(title, isEncrypted, password);
-                    setShowFolderDialog(false);
-                }}
-            />
         </div>
     );
 };

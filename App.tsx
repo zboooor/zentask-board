@@ -22,7 +22,7 @@ import IdeaCard from './components/IdeaCard';
 import LoginScreen from './components/LoginScreen';
 import DocumentList from './components/DocumentList';
 import DocumentEditor from './components/DocumentEditor';
-import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText, Upload, Lock } from 'lucide-react';
+import { Plus, Layout, BrainCircuit, LogOut, Cloud, CloudOff, RefreshCw, Loader2, FileText, Upload, Lock, Folder } from 'lucide-react';
 import {
   fetchUserData,
   saveUserDataDebounced,
@@ -36,6 +36,7 @@ import {
 } from './services/feishuService';
 import CreateColumnDialog from './components/CreateColumnDialog';
 import UnlockDialog from './components/UnlockDialog';
+import CreateFolderDialog from './components/CreateFolderDialog';
 import { generateSalt, generatePasswordHash, encryptContent, decryptContent, isEncryptedContent } from './utils/crypto';
 
 // Gemini API Key storage key
@@ -156,6 +157,8 @@ function App() {
   const [createColumnType, setCreateColumnType] = useState<'task' | 'idea'>('task');
   const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
   const [unlockingColumn, setUnlockingColumn] = useState<ColumnType | null>(null);
+  const [showDocCreateMenu, setShowDocCreateMenu] = useState(false);
+  const [showFolderDialog, setShowFolderDialog] = useState(false);
 
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
@@ -1204,13 +1207,52 @@ function App() {
             </span>
           </div>
 
-          <button
-            onClick={view === 'tasks' ? createColumn : createIdeaColumn}
-            className={`flex items-center gap-2 px-4 py-2 text-white rounded-full transition-colors shadow-sm font-medium text-sm ${view === 'tasks' ? 'bg-slate-900 hover:bg-slate-700' : 'bg-purple-600 hover:bg-purple-700'}`}
-          >
-            <Plus size={16} />
-            <span className="hidden md:inline">{view === 'tasks' ? '新建分类' : '新建主题'}</span>
-          </button>
+          {view === 'docs' ? (
+            <div className="relative">
+              <button
+                onClick={() => setShowDocCreateMenu(!showDocCreateMenu)}
+                className="flex items-center gap-2 px-4 py-2 text-white rounded-full transition-colors shadow-sm font-medium text-sm bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Plus size={16} />
+                <span className="hidden md:inline">新建</span>
+              </button>
+              {showDocCreateMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowDocCreateMenu(false)} />
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50">
+                    <button
+                      onClick={() => {
+                        createDocument();
+                        setShowDocCreateMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                    >
+                      <FileText size={16} className="text-emerald-600" />
+                      新建文档
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowFolderDialog(true);
+                        setShowDocCreateMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                    >
+                      <Folder size={16} className="text-cyan-600" />
+                      新建文件夹
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={view === 'tasks' ? createColumn : createIdeaColumn}
+              className={`flex items-center gap-2 px-4 py-2 text-white rounded-full transition-colors shadow-sm font-medium text-sm ${view === 'tasks' ? 'bg-slate-900 hover:bg-slate-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+            >
+              <Plus size={16} />
+              <span className="hidden md:inline">{view === 'tasks' ? '新建分类' : '新建主题'}</span>
+            </button>
+          )}
 
           <button
             onClick={handleClearCache}
@@ -1317,9 +1359,7 @@ function App() {
                   documentFolders={documentFolders}
                   unlockedFolders={unlockedFolders}
                   onSelectDocument={setEditingDocument}
-                  onCreateDocument={createDocument}
                   onDeleteDocument={deleteDocument}
-                  onCreateFolder={createDocumentFolder}
                   onDeleteFolder={deleteDocumentFolder}
                   onUnlockFolder={unlockDocumentFolder}
                 />
@@ -1453,6 +1493,16 @@ function App() {
           return false;
         }}
         columnTitle={unlockingColumn?.title || ''}
+      />
+
+      {/* Create Folder Dialog */}
+      <CreateFolderDialog
+        isOpen={showFolderDialog}
+        onClose={() => setShowFolderDialog(false)}
+        onCreate={(title, isEncrypted, password) => {
+          createDocumentFolder(title, isEncrypted, password);
+          setShowFolderDialog(false);
+        }}
       />
     </div>
   );
