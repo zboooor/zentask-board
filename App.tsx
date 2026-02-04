@@ -231,6 +231,10 @@ function App() {
       // Try to fetch from Feishu cloud
       fetchUserData(currentUser)
         .then((data) => {
+          console.log('[DEBUG] Feishu data received:', {
+            columns: data?.columns?.map(c => ({ id: c.id, title: c.title, isEncrypted: c.isEncrypted })),
+            columnCount: data?.columns?.length,
+          });
           if (data && (data.columns.length > 0 || data.tasks.length > 0 || data.ideas.length > 0 || (data.documents && data.documents.length > 0) || (data.documentFolders && data.documentFolders.length > 0))) {
             setColumns(data.columns.length > 0 ? data.columns : defaultCols);
             setTasks(data.tasks);
