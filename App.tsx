@@ -160,6 +160,7 @@ function App() {
   const [showDocCreateMenu, setShowDocCreateMenu] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [currentDocFolderId, setCurrentDocFolderId] = useState<Id | null>(null);
+  const [unlockingFolder, setUnlockingFolder] = useState<DocumentFolder | null>(null);
 
   // Helper: Debounced sync for updates
   const debouncedSync = useCallback((syncFn: () => Promise<void>) => {
@@ -952,17 +953,8 @@ function App() {
     }
   };
 
-  const unlockDocumentFolder = async (folder: DocumentFolder) => {
-    const password = prompt(`请输入 "${folder.title}" 的密码：`);
-    if (!password) return;
-
-    // Verify password (simple check for now - just verify the salt exists and set the password)
-    // In a real implementation, we would verify the hash
-    if (folder.encryptionSalt) {
-      const hash = await generatePasswordHash(password, folder.encryptionSalt);
-      // For simplicity, we just unlock it - proper verification would compare hashes
-      setUnlockedFolders(prev => new Map(prev).set(folder.id, password));
-    }
+  const unlockDocumentFolder = (folder: DocumentFolder) => {
+    setUnlockingFolder(folder);
   };
 
 
@@ -1506,6 +1498,28 @@ function App() {
           createDocumentFolder(title, isEncrypted, password);
           setShowFolderDialog(false);
         }}
+      />
+
+      {/* Folder Unlock Dialog */}
+      <UnlockDialog
+        isOpen={!!unlockingFolder}
+        onClose={() => setUnlockingFolder(null)}
+        onUnlock={async (password) => {
+          if (!unlockingFolder) return false;
+          // Verify password against stored hash
+          const saltAndHash = unlockingFolder.encryptionSalt?.split(':');
+          if (!saltAndHash || saltAndHash.length !== 2) return false;
+          const [salt, storedHash] = saltAndHash;
+          const computedHash = await generatePasswordHash(password, salt);
+          if (computedHash === storedHash) {
+            setUnlockedFolders(prev => new Map(prev).set(unlockingFolder.id, password));
+            // Auto-navigate into the folder after unlock
+            setCurrentDocFolderId(unlockingFolder.id);
+            return true;
+          }
+          return false;
+        }}
+        columnTitle={unlockingFolder?.title || ''}
       />
     </div>
   );
