@@ -96,7 +96,10 @@ const CreateColumnDialog: React.FC<CreateColumnDialogProps> = ({
 
                 {/* Encryption Toggle */}
                 <div className="mb-4">
-                    <label className="flex items-center gap-3 cursor-pointer">
+                    <div
+                        onClick={() => setIsEncrypted(!isEncrypted)}
+                        className="flex items-center gap-3 cursor-pointer"
+                    >
                         <div className={`relative w-12 h-6 rounded-full transition-colors ${isEncrypted ? 'bg-amber-500' : 'bg-slate-200'}`}>
                             <div
                                 className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${isEncrypted ? 'translate-x-7' : 'translate-x-1'}`}
@@ -108,13 +111,7 @@ const CreateColumnDialog: React.FC<CreateColumnDialogProps> = ({
                                 加密{type === 'task' ? '分类' : '主题'}
                             </span>
                         </div>
-                    </label>
-                    <input
-                        type="checkbox"
-                        checked={isEncrypted}
-                        onChange={(e) => setIsEncrypted(e.target.checked)}
-                        className="hidden"
-                    />
+                    </div>
                 </div>
 
                 {/* Password Fields (shown when encrypted) */}
@@ -183,10 +180,10 @@ const CreateColumnDialog: React.FC<CreateColumnDialogProps> = ({
                     <button
                         onClick={handleSubmit}
                         className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition-colors ${isEncrypted
-                                ? 'bg-amber-500 hover:bg-amber-600'
-                                : type === 'task'
-                                    ? 'bg-indigo-600 hover:bg-indigo-700'
-                                    : 'bg-purple-600 hover:bg-purple-700'
+                            ? 'bg-amber-500 hover:bg-amber-600'
+                            : type === 'task'
+                                ? 'bg-indigo-600 hover:bg-indigo-700'
+                                : 'bg-purple-600 hover:bg-purple-700'
                             }`}
                     >
                         {isEncrypted ? '🔒 创建加密' : '创建'}
